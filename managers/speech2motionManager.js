@@ -223,6 +223,7 @@ export class Speech2MotionManager {
     this.currentEmotion = 'idle'
     this.isActionGestureActive = false
     this.cachedIdleTrack = null
+    this.wsRequestInProgress = false
 
     // Cross-fade state
     this.transitionFromPose = new Map()
@@ -692,11 +693,14 @@ export class Speech2MotionManager {
     }
 
     // 2. Try persistent low-latency WebSocket first (~95ms response time)
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    // NOTE: Remote server's WebSocket loop processes 1 request at a time sequentially.
+    // If another request is currently in-flight, immediately route to HTTP POST which handles concurrent calls in parallel!
+    if (this.ws && this.ws.readyState === WebSocket.OPEN && !this.wsRequestInProgress) {
+      this.wsRequestInProgress = true
       try {
         const requestId = 'req_' + Math.random().toString(36).substring(2) + Date.now()
         payload.request_id = requestId
-        const data = await this._sendWsRequest(payload, requestId, 6000)
+        const data = await this._sendWsRequest(payload, requestId, 1500)
         if (data && data.ok && (data.data_base64 || data.bytes)) {
           this.isOnline = true
           this.consecutiveFailures = 0
@@ -712,6 +716,8 @@ export class Speech2MotionManager {
         if (this.isOnline) {
           console.warn('Speech2Motion persistent WS request failed, trying HTTP POST fallback:', wsErr)
         }
+      } finally {
+        this.wsRequestInProgress = false
       }
     }
 
@@ -924,7 +930,7 @@ export class Speech2MotionManager {
     }
   }
 
-  _sendWsRequest(payload, requestId, timeoutMs = 5000) {
+  _sendWsRequest(payload, requestId, timeoutMs = 1500) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.wsPendingRequests.delete(requestId)
@@ -1023,11 +1029,27 @@ export class Speech2MotionManager {
    */
   _switchNextQueuedSpeechTrack(nowAudioTime) {
     if (!this.speechTrackQueue || this.speechTrackQueue.length === 0) return false
+
+    // If any queued items have already completely finished their audio in the past
+    // while a previous action gesture was playing, drop stale items if a current or future item exists:
+    while (this.speechTrackQueue.length > 1 && nowAudioTime > 0) {
+      const first = this.speechTrackQueue[0]
+      if (nowAudioTime > (first.endTime + 0.10)) {
+        console.log(`🎬 Speech2Motion: Dropping stale past speech track (ended at ${first.endTime.toFixed(2)}s, now=${nowAudioTime.toFixed(2)}s)`)
+        this.speechTrackQueue.shift()
+      } else {
+        break
+      }
+    }
+
     const item = this.speechTrackQueue.shift()
+    if (!item || !item.track) return false
+
     this._activateSpeechTrack(item)
     if (nowAudioTime > 0 && item.startTime > 0 && nowAudioTime >= item.startTime) {
       const elapsed = nowAudioTime - item.startTime
-      this.playbackTime = Math.max(0.0, Math.min(item.track?.duration || 0, elapsed))
+      const effectiveElapsed = elapsed * (this.adaptivePlaybackSpeed || 1.0)
+      this.playbackTime = Math.max(0.0, Math.min(item.track?.duration || 0, effectiveElapsed))
     } else {
       this.playbackTime = 0.0
     }
@@ -1082,6 +1104,13 @@ export class Speech2MotionManager {
     const audioMgr = this.audioManager || (typeof window !== 'undefined' ? window.vrmAudioManager : null)
     const nowAudioTime = (audioMgr && audioMgr.audioCtx) ? audioMgr.audioCtx.currentTime : 0
 
+    // Check if current action gesture is still in physical motion:
+    // When executing an action (spin 360, peace sign, salute, dance, bow), NEVER stomp it mid-animation!
+    // Hold incoming tracks in queue until the physical action reaches completion!
+    const isCurrentActionActive = Boolean(this.isActionGestureActive || this.currentTrack?.isActionGesture)
+    const actionDur = this.currentTrack ? (this.currentTrack.duration || (this.currentTrack.nFrames / (this.currentTrack.fps || 30.0)) || 0) : 0
+    const isActionStillPlaying = isCurrentActionActive && (this.playbackTime < (actionDur - 0.35))
+
     // Check if an earlier speech sentence is still actively speaking:
     // (i.e. audio clock is running and current speech sentence audio hasn't completed yet)
     const isEarlierSpeechAudioActive = this.isSpeechActive && this.currentTrack && !this.currentTrack.is_idle &&
@@ -1089,16 +1118,16 @@ export class Speech2MotionManager {
       (nowAudioTime < (this.speechStartTime + this.speechAudioDuration - 0.15)) &&
       (nowAudioTime < (speechStartTime - 0.25))
 
-    if (!isEarlierSpeechAudioActive) {
+    if (!isEarlierSpeechAudioActive && !isActionStillPlaying) {
       // Activate immediately with smooth Hermite slerp blending from current pose
       this._activateSpeechTrack(item)
       return
     }
 
-    // Otherwise, chain onto speechTrackQueue so it seamlessly transitions when current sentence finishes
+    // Otherwise, chain onto speechTrackQueue so it seamlessly transitions when current sentence/action finishes
     this.speechTrackQueue.push(item)
     this.speechTrackQueue.sort((a, b) => a.startTime - b.startTime)
-    console.log(`🎬 Speech2Motion: Enqueued speech track (${this.speechTrackQueue.length} in queue, scheduled for ${speechStartTime.toFixed(2)}s)`)
+    console.log(`🎬 Speech2Motion: Enqueued speech track (${this.speechTrackQueue.length} in queue, scheduled for ${speechStartTime.toFixed(2)}s, actionBusy=${isActionStillPlaying})`)
   }
 
   /**

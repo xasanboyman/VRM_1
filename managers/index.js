@@ -502,6 +502,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
         const chunksToPlay = pendingModelAudioChunks
         const currentFullText = pendingModelText.trim()
+        const fullTurnText = pendingModelText
         pendingModelAudioChunks = []
 
         if (chunksToPlay.length === 0) {
@@ -544,11 +545,6 @@ export async function createVRMChatSystem(canvas, options = {}) {
         for (const c of chunksToPlay) {
           combinedPcm.set(c, sampleOffset)
           sampleOffset += c.length
-        }
-
-        if (isFinalTurn) {
-          pendingModelText = ''
-          lastSentenceFlushedText = ''
         }
 
         console.log(`🎬 Speech2Motion Dispatch: "${utteranceText.slice(0, 50)}..." (${audioDuration.toFixed(2)}s, ${totalSamples} samples)`)
@@ -665,8 +661,8 @@ export async function createVRMChatSystem(canvas, options = {}) {
               turnActionGestureTriggered = true
             } else {
               // Check if the keyword appears in an upcoming sentence of this turn
-              const remainingModelText = (pendingModelText && pendingModelText.length > currentFullText.length)
-                ? pendingModelText.slice(currentFullText.length)
+              const remainingModelText = (fullTurnText && fullTurnText.length > currentFullText.length)
+                ? fullTurnText.slice(currentFullText.length)
                 : ''
               const willAppearLater = pat ? pat.test(remainingModelText) : false
 
@@ -721,6 +717,11 @@ export async function createVRMChatSystem(canvas, options = {}) {
         }).catch((err) => {
           console.warn('Speech2Motion utterance playback error:', err)
         })
+
+        if (isFinalTurn) {
+          pendingModelText = ''
+          lastSentenceFlushedText = ''
+        }
       }
 
       const handleIncomingAudioChunk = (int16Data) => {
