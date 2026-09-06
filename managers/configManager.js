@@ -42,7 +42,7 @@ export class ConfigManager {
 
     return {
       enabled: this.parseBoolean(import.meta.env.VITE_TELEGRAM_ENABLED, true),
-      relayBaseUrl: String(import.meta.env.VITE_TELEGRAM_RELAY_BASE_URL || '/api/telegram').trim(),
+      relayBaseUrl: String(import.meta.env.VITE_TELEGRAM_RELAY_BASE_URL || appUrl('api/telegram')).trim(),
       chatId: import.meta.env.VITE_TELEGRAM_CHAT_ID || '',
       sendLogs: this.parseBoolean(import.meta.env.VITE_TELEGRAM_SEND_LOGS, false),
       logCooldownMs: Math.round(logCooldownSeconds * 1000),
@@ -67,3 +67,4 @@ export class ConfigManager {
     return parsed
   }
 }
+import { appUrl } from '../src/utils/appUrl.js'

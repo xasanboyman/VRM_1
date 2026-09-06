@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai'
+import { appUrl } from '../src/utils/appUrl.js'
 
 export function stripExpressionCommands(text) {
   if (typeof text !== 'string') return ''
@@ -1788,7 +1789,7 @@ export class AIClient {
         .join(',')
 
       const queryTags = tags || 'landscape'
-      const searchUrl = `/api/search-image?q=${encodeURIComponent(prompt.trim())}`
+      const searchUrl = `${appUrl('api/search-image')}?q=${encodeURIComponent(prompt.trim())}`
 
       let imageUrl = null
       try {
@@ -1812,7 +1813,7 @@ export class AIClient {
       }
 
       const finalFetchUrl = imageUrl.startsWith('http')
-        ? `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`
+        ? `${appUrl('api/proxy-image')}?url=${encodeURIComponent(imageUrl)}`
         : imageUrl
 
       fetch(finalFetchUrl)

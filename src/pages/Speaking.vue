@@ -343,6 +343,7 @@ const RECONNECT_WINDOW_MS = 180000
 const RECONNECT_HINT_THRESHOLD = 3
 
 import { generateDeviceFingerprint } from '../utils/deviceFingerprint.js'
+import { appUrl } from '../utils/appUrl.js'
 
 const createDebugId = (prefix = 'id') => {
   const uuid = globalThis?.crypto?.randomUUID?.()
@@ -1428,7 +1429,7 @@ const proceedToConnect = async () => {
   isConnecting.value = true
 
   const tokenProvider = async () => {
-    const res = await fetch('/api/get-token')
+    const res = await fetch(appUrl('api/get-token'))
     if (!res.ok) {
       throw new Error(`Token generation failed: ${res.statusText} (${res.status})`)
     }
@@ -1735,7 +1736,7 @@ const handleModelSwitch = async (modelKey) => {
 
   // If undefined/null, it means "Default"
   if (!modelKey) {
-    await loadVRMFile({ name: 'Default', url: '/models/Ani.vrm' }, true)
+    await loadVRMFile({ name: 'Default', url: appUrl('models/Ani.vrm') }, true)
     selectedModelKey.value = null
     localStorage.removeItem('vrm_selected_model_key')
     return

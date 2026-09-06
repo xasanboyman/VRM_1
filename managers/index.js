@@ -8,6 +8,7 @@ import { ConfigManager } from './configManager.js'
 import { VisionManager } from './visionManager.js'
 import { TelegramManager } from './telegramManager.js'
 import { cacheManager } from './cacheManager.js'
+import { appUrl } from '../src/utils/appUrl.js'
 import { buildAiLanguagePreferenceInstruction, resolveLanguage } from '../src/i18n/ui.js'
 
 export async function createVRMChatSystem(canvas, options = {}) {
@@ -82,8 +83,8 @@ export async function createVRMChatSystem(canvas, options = {}) {
   }
 
   // Strategy: Try local Ani model first, then local riko, then remote fallback.
-  const localModelPath = '/models/Ani.vrm'
-  const fallbackLocalPath = '/models/riko.vrm'
+  const localModelPath = appUrl('models/Ani.vrm')
+  const fallbackLocalPath = appUrl('models/riko.vrm')
   const remoteModelUrl =
     'https://raw.githubusercontent.com/lucyakkount-cyber/VRM_1/main/public/models/riko.vrm'
 

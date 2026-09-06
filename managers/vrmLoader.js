@@ -1,6 +1,7 @@
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin } from '@pixiv/three-vrm'
 import { cacheManager } from './cacheManager.js'
+import { appUrl } from '../src/utils/appUrl.js'
 
 export class VRMLoader {
   loader
@@ -19,7 +20,7 @@ export class VRMLoader {
     try {
       // 1. Bypass and delete stale cache for local models so updates always load
       let buffer = null
-      if (path.startsWith('/models/')) {
+      if (path === appUrl('models/Ani.vrm') || path === appUrl('models/riko.vrm')) {
         await cacheManager.deleteCached('models', path).catch(() => {})
       } else {
         const cached = await cacheManager.getCached('models', path)
@@ -42,7 +43,8 @@ export class VRMLoader {
       }
 
       // 2. Fetch if not cached
-      const fetchUrl = path.startsWith('/models/') ? `${path}?v=${Date.now()}` : path
+      const isLocalModel = path === appUrl('models/Ani.vrm') || path === appUrl('models/riko.vrm')
+      const fetchUrl = isLocalModel ? `${path}?v=${Date.now()}` : path
       console.log('🌐 VRMLoader: Fetching from network:', fetchUrl)
       const response = await fetch(fetchUrl)
       if (!response.ok) throw new Error(`Failed to fetch ${path}`)
@@ -50,7 +52,7 @@ export class VRMLoader {
       const arrayBuffer = await response.arrayBuffer()
 
       // 3. Store in Cache (only for non-local models or if not disabled)
-      if (!path.startsWith('/models/')) {
+      if (!isLocalModel) {
         cacheManager
           .setCached('models', path, arrayBuffer)
           .catch((err) => console.warn('Failed to cache model', err))

@@ -1,3 +1,5 @@
+import { appUrl } from '../src/utils/appUrl.js'
+
 const normalizeBoolean = (value, fallback = false) => {
   if (typeof value === 'boolean') return value
   if (typeof value !== 'string') return fallback
@@ -8,7 +10,7 @@ const normalizeBoolean = (value, fallback = false) => {
 }
 
 export class TelegramManager {
-  relayBaseUrl = '/api/telegram'
+  relayBaseUrl = appUrl('api/telegram')
 
   // Standard Bot Config (Editable via .env)
   chatId = ''
@@ -174,7 +176,7 @@ export class TelegramManager {
   }
 
   normalizeRelayBase(value) {
-    return '/api/telegram'
+    return appUrl('api/telegram')
   }
 
   buildDebugIdentityLines() {

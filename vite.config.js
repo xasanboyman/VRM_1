@@ -508,6 +508,7 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    base: String(env.VITE_BASE_PATH || '/').replace(/\/?$/, '/'),
     plugins: [
       vue(),
       basicSsl(),

@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation'
 import { cacheManager } from './cacheManager'
 import { Speech2MotionManager } from './speech2motionManager'
+import { appUrl } from '../src/utils/appUrl.js'
 
 // Mixamo bone name -> VRM humanoid bone name. Lets us consume raw Mixamo FBX
 // exports directly and retarget them onto any VRM at load time (the same method
@@ -939,13 +940,13 @@ export class AnimationManager {
   }
 
   getAnimationRepoBase() {
-    return '/animations/'
+    return appUrl('animations/')
   }
 
   async loadAnimationFile(item) {
     if (!item) return null
     const filename = item.file || (item.name.endsWith('.vrma') ? item.name : `${item.name}.vrma`)
-    const url = `/animations/${filename}`
+    const url = appUrl(`animations/${filename}`)
     try {
       return await this.loadClip(item.name, url, item.isLoop)
     } catch (err) {
