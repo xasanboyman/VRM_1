@@ -121,12 +121,34 @@ export function decodeAudio2FaceResponse(buffer) {
 const encodeSpeechTime = ([charIndex, startTime]) => fields(intField(1, charIndex), floatField(2, startTime))
 const encodeMotionKeyword = ([charIndex, keyword]) => fields(intField(1, charIndex), stringField(2, keyword))
 
-export function encodeSpeech2MotionRequest({ className, requestId, userId, avatar, appName, duration, speechText, sequenceNumber, speechTime = [], motionKeywords = [], labelExpression, responseChunkFrames = 0 }) {
+export function encodeSpeech2MotionRequest({
+  className,
+  requestId,
+  userId,
+  avatar,
+  appName,
+  maxFrontExtensionDuration = 1.0,
+  maxRearExtensionDuration = 5.0,
+  duration,
+  speechText,
+  sequenceNumber,
+  speechTime = [],
+  motionKeywords = [],
+  labelExpression,
+  responseChunkFrames = 0,
+}) {
   return fields(
-    stringField(1, className), stringField(2, requestId), stringField(3, userId),
-    stringField(4, avatar), stringField(5, appName),
+    stringField(1, className),
+    stringField(2, requestId),
+    stringField(3, userId),
+    stringField(4, avatar),
+    stringField(5, appName),
+    floatField(6, maxFrontExtensionDuration),
+    floatField(7, maxRearExtensionDuration),
     responseChunkFrames ? intField(12, responseChunkFrames) : null,
-    floatField(15, duration), stringField(16, speechText), intField(17, sequenceNumber),
+    floatField(15, duration),
+    stringField(16, speechText),
+    intField(17, sequenceNumber),
     ...speechTime.map((item) => messageField(18, encodeSpeechTime(item))),
     ...motionKeywords.map((item) => messageField(19, encodeMotionKeyword(item))),
     stringField(20, labelExpression),

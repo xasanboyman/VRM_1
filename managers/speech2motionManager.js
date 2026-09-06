@@ -156,9 +156,10 @@ export class Speech2MotionManager {
     this.vrm = vrm
     const DEFAULT_SPEECH2MOTION_URL = 'https://xn--dr8haa.uz/oracle/speech2motion'
     const DEFAULT_SPEECH2MOTION_WS_URL = 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/speech2motion/ws'
+    const DEFAULT_SPEECH2MOTION_PROTO_WS_URL = 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/streaming_speech2motion/ws'
 
-    const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_URL
-    this.apiEndpoint = options.apiEndpoint || (envUrl ? `${envUrl}/api/v3/speech2motion/generate` : `${DEFAULT_SPEECH2MOTION_URL}/api/v3/speech2motion/generate`)
+    const envUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_URL) || DEFAULT_SPEECH2MOTION_URL
+    this.apiEndpoint = options.apiEndpoint || `${envUrl.replace(/\/+$/, '')}/api/v3/speech2motion/generate`
     this.avatarName = options.avatarName || 'Ani-default'
     this.enabled = options.enabled !== false
 
@@ -168,26 +169,19 @@ export class Speech2MotionManager {
     this.wsReconnectAttempts = 0
     this.maxWsReconnectAttempts = 1
 
-    // Persistent WebSocket for streaming motion generation (ultra low latency)
+    // 1. Persistent low-latency JSON WebSocket (streaming generation)
     this.ws = null
-    this.wsEndpoint = options.wsEndpoint || null
-    if (!this.wsEndpoint && typeof window !== 'undefined') {
+    this.wsEndpoint = options.wsEndpoint || DEFAULT_SPEECH2MOTION_WS_URL
+    if (typeof window !== 'undefined') {
       const envWsUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_WS_URL
-      if (envWsUrl) {
+      if (envWsUrl && !envWsUrl.includes('streaming_speech2motion')) {
         this.wsEndpoint = envWsUrl
-      } else if (envUrl) {
-        try {
-          const u = new URL(envUrl)
-          const protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
-          const basePath = u.pathname.replace(/\/+$/, '')
-          this.wsEndpoint = `${protocol}//${u.host}${basePath}/api/v3/speech2motion/ws`
-        } catch (_) {
-          this.wsEndpoint = DEFAULT_SPEECH2MOTION_WS_URL
-        }
-      } else {
-        this.wsEndpoint = DEFAULT_SPEECH2MOTION_WS_URL
       }
     }
+
+    // 2. Official Protobuf WebSocket (fallback)
+    this.protobufWsEndpoint = DEFAULT_SPEECH2MOTION_PROTO_WS_URL
+
     this.wsPendingRequests = new Map()
     this.wsReconnectTimer = null
     if (this.wsEndpoint) {
@@ -565,11 +559,61 @@ export class Speech2MotionManager {
   }) {
     const cleanSpeechText = (speechText && speechText !== '...') ? (stripExpressionCommands(speechText) || '...') : '...'
 
+    // Minimum physical durations for action gestures so movements (spin 360, salute, bow, dance, etc.)
+    // complete their full natural execution without being clipped or compressed:
+    const MIN_ACTION_DURATIONS = {
+      '转圈': 4.5,
+      '后空翻': 4.5,
+      '江南style': 6.0,
+      '街舞': 5.0,
+      '玛卡莲娜舞': 5.0,
+      '打招呼': 3.5,
+      '比心': 3.5,
+      '鞠躬': 3.8,
+      '害羞': 4.5,
+      '思考': 4.0,
+      '哭泣': 4.5,
+      '生气': 4.5,
+      '鼓掌': 3.2,
+      '叉腰': 3.5,
+      '开心蹦跳': 3.5,
+      '敬礼': 3.5,
+      '摸摸头': 3.5,
+      '飞吻': 3.5,
+      '挑衅': 3.5,
+      '欢呼': 3.5,
+      '举手': 3.5,
+      '松了一口气': 3.5,
+      '恍然大悟': 3.5,
+      '打瞌睡': 4.0,
+      '无聊': 4.0,
+      '元气体操': 4.5,
+    }
+
+    let effectiveDuration = Math.max(1.0, duration)
+    if (motionKeywords && motionKeywords.length > 0) {
+      for (const kwItem of motionKeywords) {
+        const kw = Array.isArray(kwItem) ? kwItem[1] : String(kwItem)
+        const charIdx = Array.isArray(kwItem) ? kwItem[0] : 0
+        let kwTime = 0.0
+        if (speechTime && speechTime.length > 0) {
+          for (const st of speechTime) {
+            if (st[0] <= charIdx) kwTime = st[1]
+            else break
+          }
+        } else if (cleanSpeechText.length > 0) {
+          kwTime = (charIdx / Math.max(1, cleanSpeechText.length)) * effectiveDuration
+        }
+        const minDur = MIN_ACTION_DURATIONS[kw] || 3.5
+        effectiveDuration = Math.max(effectiveDuration, kwTime + minDur)
+      }
+    }
+
     const payload = {
       user_id: 'vrm-web-client',
       avatar: this.avatarName || 'all',
       speech_text: cleanSpeechText,
-      duration: Math.max(1.0, duration),
+      duration: effectiveDuration,
       app_name: 'babylon',
       label_expression: labelExpression,
     }
@@ -655,7 +699,7 @@ export class Speech2MotionManager {
     try {
       const data = await this._requestOfficialTrack({
         speechText: cleanSpeechText,
-        duration: Math.max(1.0, duration),
+        duration: effectiveDuration,
         labelExpression,
         motionKeywords: motionKeywords || [],
         speechTime: speechTime || [],
@@ -691,7 +735,8 @@ export class Speech2MotionManager {
   _requestOfficialTrack({ speechText, duration, labelExpression, motionKeywords, speechTime }) {
     return new Promise((resolve, reject) => {
       const requestId = `s2m_${Math.random().toString(36).slice(2)}${Date.now()}`
-      const ws = new WebSocket(this.wsEndpoint)
+      const protoWsUrl = this.protobufWsEndpoint || 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/streaming_speech2motion/ws'
+      const ws = new WebSocket(protoWsUrl)
       ws.binaryType = 'arraybuffer'
       const chunks = []
       let metadata = null
@@ -723,6 +768,8 @@ export class Speech2MotionManager {
           userId: 'vrm-web-client',
           avatar: this.avatarName,
           appName: 'babylon',
+          maxFrontExtensionDuration: 1.0,
+          maxRearExtensionDuration: 5.0,
         }))
         ws.send(encodeSpeech2MotionRequest({
           className: 'StreamingSpeech2MotionV3ChunkBody',
