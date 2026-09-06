@@ -2200,14 +2200,14 @@ export class AIClient {
           {
             name: 'trigger_gesture',
             description:
-              'Trigger a full-body mocap gesture or emotion posture for the avatar (e.g. salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, shy, nod, shake_head, thinking, thumbs_up).',
+              'Trigger a full-body mocap gesture or emotion posture for the avatar (e.g. salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, shy, nod, shake_head, thinking, thumbs_up, blow_kiss).',
             parameters: {
               type: 'OBJECT',
               properties: {
                 gesture: {
                   type: 'STRING',
                   description:
-                    'Gesture name to play. Allowed values: salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, shy, nod, shake_head, thinking, thumbs_up, jump, cry, quiet.',
+                    'Gesture name to play. Allowed values: salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, shy, nod, shake_head, thinking, thumbs_up, jump, cry, quiet, blow_kiss.',
                 },
               },
               required: ['gesture'],

@@ -324,11 +324,9 @@ export async function createVRMChatSystem(canvas, options = {}) {
       const triggerAnimation = (animName) => {
         if (!animName) return
         pendingTurnGesture = animName
-        // If model is NOT speaking and no audio is buffering, trigger directly as standalone gesture
-        if (pendingModelAudioChunks.length === 0 && !audioManager.isPlaying) {
-          pendingTurnGesture = null
-          return animationManager?.triggerNamedAnimation(animName)
-        }
+        // Always keep gesture pending so it merges into the next speech dispatch
+        // and plays synchronized with the voice audio, not before it.
+        console.log(`✨ Speech2Motion: Triggering mocap gesture "${animName}" -> will sync with speech`)
       }
       const greetingRegex = /\b(hi|hello|hey|yo|sup|good morning|good afternoon|good evening)\b/i
       const funnyRegex = /\b(haha|hehe|lol|lmao|rofl|funny|joke|hilarious|comedy)\b/i
@@ -452,6 +450,15 @@ export async function createVRMChatSystem(canvas, options = {}) {
         for (const c of chunksToPlay) totalSamples += c.length
         const audioDuration = totalSamples / 24000.0 // Gemini 24kHz PCM
 
+        if (totalSamples < 2400) {
+          // Discard empty/noise micro-buffers (< 100ms, like 1 sample glitch upon turnComplete)
+          if (isFinalTurn) {
+            pendingModelText = ''
+            lastSentenceFlushedText = ''
+          }
+          return
+        }
+
         if (audioDuration < 0.25 && !isFinalTurn) {
           // Keep buffering if duration is too small during non-final stream to avoid micro-fragmentation
           pendingModelAudioChunks = chunksToPlay
@@ -523,6 +530,9 @@ export async function createVRMChatSystem(canvas, options = {}) {
             stretch: '伸懒腰',
             gun: '开枪',
             hands_up: '举手',
+            blow_kiss: '飞吻',
+            kiss: '飞吻',
+            mwah: '飞吻',
           }
           const lowerG = String(pendingTurnGesture).toLowerCase().trim().replace(/[\s-]+/g, '_')
           const mappedKw = gestureMap[lowerG] || pendingTurnGesture
@@ -551,14 +561,6 @@ export async function createVRMChatSystem(canvas, options = {}) {
         // 4. Sequence sequentially behind any playing utterance
         activeUtterancePromise = activeUtterancePromise.then(async () => {
           audioManager.setUserSpeakingState(false)
-
-          // If an action gesture (like 360 spin, dance, wave) is currently performing or fetching,
-          // hold back spoken sentences until the physical motion completes so it won't add up or become messy!
-          const s2m = animationManager?.speech2motion
-          if (s2m && (s2m.isActionGestureActive || s2m.isFetchingActionGesture)) {
-            console.log('⏳ Speech2Motion: Holding back spoken utterance until action gesture finishes...')
-            await s2m.waitForCurrentActionGesture()
-          }
 
           const motionTrack = await motionTrackPromise
           if (motionTrack && isAction) {
