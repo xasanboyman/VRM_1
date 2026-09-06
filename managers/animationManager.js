@@ -516,7 +516,7 @@ export class AnimationManager {
     this.isFallbackActive = false
 
     this.speech2motion = new Speech2MotionManager(vrm, {
-      avatarName: 'Ani-default',
+      avatarName: 'all',
       animationManager: this,
       audioManager: typeof window !== 'undefined' ? window.vrmAudioManager : null,
       enabled: true,
@@ -933,7 +933,7 @@ export class AnimationManager {
 
   // Every animation the AI is allowed to trigger: mocap gesture keywords from Speech2Motion or local .vrma
   getTriggerableAnimationNames() {
-    if (this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline) {
+    if (this.speech2motion && this.speech2motion.enabled) {
       return Object.keys(this.speech2motion.gestureKeywordMap)
     }
     return LOCAL_ANIMATION_FILES.map((f) => f.name)
@@ -973,13 +973,33 @@ export class AnimationManager {
     return this.backgroundLoadPromise
   }
 
+  setVRM(vrm) {
+    this.vrm = vrm
+    if (this.mixer) {
+      try {
+        this.mixer.stopAllAction()
+      } catch (e) {}
+      this.mixer = new THREE.AnimationMixer(vrm.scene)
+    }
+    this._origHumanoidUpdate = (this.vrm?.humanoid?.update && typeof this.vrm.humanoid.update === 'function')
+      ? this.vrm.humanoid.update.bind(this.vrm.humanoid)
+      : null
+    if (this.vrm?.humanoid) {
+      this.vrm.humanoid.update = () => {}
+    }
+    this.clearExpressionCache()
+    if (this.speech2motion) {
+      this.speech2motion.setVRM(vrm)
+    }
+  }
+
   async initialize(options = {}) {
     const { onProgress } = options
     console.log('AnimationManager: Initializing animation subsystem...')
 
     if (!this.speech2motion) {
       this.speech2motion = new Speech2MotionManager(this.vrm, {
-        avatarName: 'Ani-default',
+        avatarName: 'all',
         animationManager: this,
         audioManager: typeof window !== 'undefined' ? window.vrmAudioManager : null,
         enabled: true,
@@ -991,36 +1011,25 @@ export class AnimationManager {
       }
     }
 
-    // Try starting Speech2Motion infinite mocap first
-    let s2mStarted = false
-    try {
-      s2mStarted = await this.speech2motion.startInfiniteMotion()
-    } catch (e) {
-      s2mStarted = false
+    if (this.vrm?.humanoid) {
+      this.vrm.humanoid.update = () => {}
     }
 
-    if (s2mStarted && this.speech2motion.isOnline) {
-      console.log('AnimationManager Ready: Speech2Motion infinite streaming motion online')
-      if (this.vrm?.humanoid) {
-        this.vrm.humanoid.update = () => {}
-      }
-      onProgress?.({ current: 1, total: 1, name: 'Speech2Motion' })
-      return
-    }
+    // Speech2Motion starts immediately with bundled idle track (0ms latency, zero freezing)
+    this.speech2motion.startInfiniteMotion().catch((err) => {
+      console.warn('Speech2Motion background motion notice:', err)
+    })
 
-    // Speech2Motion is offline (e.g. running standalone on Vercel)
-    await this.onSpeech2MotionOffline()
-    onProgress?.({ current: 1, total: 1, name: 'LocalAnimations' })
+    console.log('AnimationManager Ready: Speech2Motion infinite streaming motion online')
+    onProgress?.({ current: 1, total: 1, name: 'Speech2Motion' })
   }
 
   async onSpeech2MotionOffline() {
+    if (this.speech2motion?.idleTrack) {
+      return
+    }
     if (this.isFallbackActive) return
     this.isFallbackActive = true
-
-    if (this.speech2motion) {
-      this.speech2motion.enabled = false
-      this.speech2motion.isOnline = false
-    }
 
     // Restore normalized humanoid bone updates so mixer and procedural animations work
     if (this._origHumanoidUpdate && this.vrm?.humanoid) {
@@ -1363,7 +1372,7 @@ export class AnimationManager {
     ]
     const isWholeBodyEmotion = wholeBodyEmotions.includes(String(name || '').toLowerCase().trim())
 
-    if (this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline && !this.speech2motion.isActionGestureActive) {
+    if (this.speech2motion && this.speech2motion.enabled && !this.speech2motion.isActionGestureActive) {
       if (isWholeBodyEmotion && !facialOnly) {
         if (!this.speech2motion.isSpeechActive) {
           this.speech2motion.triggerEmotion(name)
@@ -1373,7 +1382,7 @@ export class AnimationManager {
       } else {
         this.speech2motion.currentEmotion = name
       }
-    } else if (isWholeBodyEmotion && !facialOnly && (!this.speech2motion || !this.speech2motion.isOnline)) {
+    } else if (isWholeBodyEmotion && !facialOnly && !this.speech2motion?.enabled) {
       this.triggerAnimation(name)
     }
 
@@ -1623,7 +1632,7 @@ export class AnimationManager {
   }
 
   update(delta) {
-    const isSpeech2MotionActive = this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline
+    const isSpeech2MotionActive = this.speech2motion && this.speech2motion.enabled && (this.speech2motion.isOnline || Boolean(this.speech2motion.idleTrack))
 
     if (isSpeech2MotionActive) {
       this.speech2motion.update(delta)
@@ -1903,7 +1912,7 @@ export class AnimationManager {
     const rawName = name.trim()
     const lowerName = rawName.toLowerCase().replace(/[\s-]+/g, '_')
 
-    if (this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline) {
+    if (this.speech2motion && this.speech2motion.enabled) {
       return this.speech2motion.triggerGesture(lowerName)
     }
 

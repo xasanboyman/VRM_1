@@ -1044,9 +1044,21 @@ export async function createVRMChatSystem(canvas, options = {}) {
         sceneManager.applyModelQuality(vrm.scene)
         window.currentVrm = vrm
 
-        animationManager = new AnimationManager(vrm, sceneManager.camera)
-        window.animationManager = animationManager
-        await animationManager.initialize()
+        if (animationManager) {
+          animationManager.setVRM(vrm)
+          audioManager.speech2motion = animationManager.speech2motion
+          if (animationManager.speech2motion) {
+            animationManager.speech2motion.audioManager = audioManager
+          }
+        } else {
+          animationManager = new AnimationManager(vrm, sceneManager.camera)
+          window.animationManager = animationManager
+          audioManager.speech2motion = animationManager.speech2motion
+          if (animationManager.speech2motion) {
+            animationManager.speech2motion.audioManager = audioManager
+          }
+          await animationManager.initialize()
+        }
 
         // Wire up Lip Sync State for new VRM
         audioManager.onSpeechStart = () => {
