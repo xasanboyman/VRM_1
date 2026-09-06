@@ -654,12 +654,22 @@ export async function createVRMChatSystem(canvas, options = {}) {
               console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] aligned to word at char index ${m.index}`)
               pendingTurnGesture = null
             } else {
-              // Real-time immediate responsiveness: execute gesture immediately on the FIRST spoken sentence
-              // instead of delaying across multiple sentences until the end of speech!
-              timingInfo.motionKeywords.push([0, mappedKw])
-              timingInfo.motionKeywords.sort((a, b) => a[0] - b[0])
-              console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] executed immediately on first utterance`)
-              pendingTurnGesture = null
+              // Check if the keyword appears in an upcoming sentence of this turn
+              const remainingModelText = (pendingModelText && pendingModelText.length > currentFullText.length)
+                ? pendingModelText.slice(currentFullText.length)
+                : ''
+              const willAppearLater = pat ? pat.test(remainingModelText) : false
+
+              if (willAppearLater && !isFinalTurn) {
+                console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] held for upcoming sentence containing the keyword`)
+              } else {
+                // If the keyword does not appear later (or model didn't speak the action name explicitly),
+                // synchronize it directly with the spoken utterance!
+                timingInfo.motionKeywords.push([0, mappedKw])
+                timingInfo.motionKeywords.sort((a, b) => a[0] - b[0])
+                console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] synchronized with spoken utterance`)
+                pendingTurnGesture = null
+              }
             }
           }
         }
