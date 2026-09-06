@@ -700,7 +700,9 @@ export class Speech2MotionManager {
       try {
         const requestId = 'req_' + Math.random().toString(36).substring(2) + Date.now()
         payload.request_id = requestId
-        const data = await this._sendWsRequest(payload, requestId, 1500)
+        // Dynamic timeout based on motion duration: min 5000ms, scaling up for long physical actions (e.g. 4.5s spin)
+        const wsTimeout = Math.max(5000, Math.round(effectiveDuration * 1200 + 2000))
+        const data = await this._sendWsRequest(payload, requestId, wsTimeout)
         if (data && data.ok && (data.data_base64 || data.bytes)) {
           this.isOnline = true
           this.consecutiveFailures = 0
@@ -714,7 +716,7 @@ export class Speech2MotionManager {
         }
       } catch (wsErr) {
         if (this.isOnline) {
-          console.warn('Speech2Motion persistent WS request failed, trying HTTP POST fallback:', wsErr)
+          console.log('Speech2Motion WS request note, using HTTP fallback:', wsErr?.message || wsErr)
         }
       } finally {
         this.wsRequestInProgress = false
@@ -930,7 +932,7 @@ export class Speech2MotionManager {
     }
   }
 
-  _sendWsRequest(payload, requestId, timeoutMs = 1500) {
+  _sendWsRequest(payload, requestId, timeoutMs = 5000) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.wsPendingRequests.delete(requestId)
