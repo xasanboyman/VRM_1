@@ -18,6 +18,19 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
     return { speechTime: [], motionKeywords: [] }
   }
 
+  // If all actions are excluded for this chunk (e.g. multi-sentence turn where an action already triggered),
+  // return speechTime for lip-sync and timing but no action keywords!
+  if (excludeKeywords && (excludeKeywords.has('ALL_ACTIONS') || excludeKeywords.has('all_actions'))) {
+    const wordRegex = /\S+/g
+    const words = []
+    let match
+    while ((match = wordRegex.exec(text)) !== null) {
+      words.push({ word: match[0], charIndex: match.index, length: match[0].length })
+    }
+    const speechTime = words.map(w => [w.charIndex, Number(((w.charIndex / totalChars) * duration).toFixed(3))])
+    return { speechTime, motionKeywords: [] }
+  }
+
   // Find all words and calculate character offsets
   const wordRegex = /\S+/g
   const words = []
@@ -516,11 +529,11 @@ export class Speech2MotionManager {
   /**
    * Extract word timing and motion keywords for text and duration.
    */
-  extractTimingAndKeywords(speechText, duration) {
+  extractTimingAndKeywords(speechText, duration, excludeOption = null) {
     const now = Date.now()
     const activeCooldownKeywords = new Set()
     for (const [kw, ts] of this.recentActionGestures.entries()) {
-      if (now - ts < 3000) {
+      if (now - ts < 8000) {
         activeCooldownKeywords.add(kw)
       } else {
         this.recentActionGestures.delete(kw)
@@ -528,6 +541,9 @@ export class Speech2MotionManager {
     }
     if (this.isActionGestureActive && this.currentActionKeyword) {
       activeCooldownKeywords.add(this.currentActionKeyword)
+    }
+    if (excludeOption === 'all_actions' || excludeOption === 'ALL_ACTIONS') {
+      activeCooldownKeywords.add('ALL_ACTIONS')
     }
 
     return extractSpeechTimingAndKeywords(speechText, duration, activeCooldownKeywords)
@@ -632,11 +648,13 @@ export class Speech2MotionManager {
             else break
           }
         } else if (cleanSpeechText.length > 0) {
-          kwTime = (charIdx / Math.max(1, cleanSpeechText.length)) * effectiveDuration
+          kwTime = (charIdx / Math.max(1, cleanSpeechText.length)) * duration
         }
         const minDur = MIN_ACTION_DURATIONS[kw] || 3.5
         effectiveDuration = Math.max(effectiveDuration, kwTime + minDur)
       }
+      // Safety cap: Never allow effectiveDuration to blow up beyond reasonable action length
+      effectiveDuration = Math.min(effectiveDuration, Math.max(duration + 1.2, 5.5))
     }
 
     const payload = {
@@ -955,8 +973,15 @@ export class Speech2MotionManager {
     this.speechStartTime = item.startTime
     this.speechAudioDuration = item.duration
     this.transitionElapsed = 0
-    this.transitionBlendDuration = 0.45 // 450ms smooth continuous crossfade
     this.isActionGestureActive = Boolean(item.isActionGesture || track.isActionGesture)
+    this.currentActionKeyword = null
+    if (this.isActionGestureActive) {
+      if (track.motionKeywords && track.motionKeywords.length > 0) {
+        this.currentActionKeyword = Array.isArray(track.motionKeywords[0]) ? track.motionKeywords[0][1] : track.motionKeywords[0]
+      } else if (item.track?.motionKeywords && item.track.motionKeywords.length > 0) {
+        this.currentActionKeyword = Array.isArray(item.track.motionKeywords[0]) ? item.track.motionKeywords[0][1] : item.track.motionKeywords[0]
+      }
+    }
     this._speechSilenceTimer = 0
 
     // Adaptive timing calculation: adjust animation speed (slow or fast) based on audio duration
@@ -1501,8 +1526,13 @@ export class Speech2MotionManager {
     const isSpeakingAudio = Boolean(audioMgr && audioMgr.isPlaying && audioMgr.audioCtx && this.speechStartTime > 0)
     const hasScheduledAudio = Boolean(audioMgr && audioMgr.audioCtx && (audioMgr.nextStartTime > (audioMgr.audioCtx.currentTime + 0.05)))
 
+    // Check if current action gesture is complete before transitioning to next sentence track:
+    const isCurrentActionActive = Boolean(this.isActionGestureActive || this.currentTrack?.isActionGesture)
+    const isActionComplete = !isCurrentActionActive || (this.playbackTime >= (totalDuration - 0.35))
+
     // Seamlessly transition into the next queued speech track right before audio begins (40ms handover, no freeze!)
-    if (this.speechTrackQueue.length > 0) {
+    // If an action gesture is actively playing (e.g. 360 spin, peace sign, dance), hold until action finishes!
+    if (this.speechTrackQueue.length > 0 && isActionComplete) {
       const nextItem = this.speechTrackQueue[0]
       const shouldSwitch = (nowAudioTime > 0 && nowAudioTime >= (nextItem.startTime - 0.04)) ||
                            (nowAudioTime <= 0 && this.playbackTime >= totalDuration)
@@ -1548,7 +1578,7 @@ export class Speech2MotionManager {
         this.playbackTime = Math.max(0.0, Math.min(totalDuration, this.playbackTime))
       }
     } else if (this.isSpeechActive) {
-      if (this.speechTrackQueue.length > 0 && (nowAudioTime <= 0 || nowAudioTime >= this.speechTrackQueue[0].startTime - 0.04)) {
+      if (isActionComplete && this.speechTrackQueue.length > 0 && (nowAudioTime <= 0 || nowAudioTime >= this.speechTrackQueue[0].startTime - 0.04)) {
         if (this._switchNextQueuedSpeechTrack(nowAudioTime)) return
       }
 
@@ -1561,6 +1591,7 @@ export class Speech2MotionManager {
       } else {
         this.playbackTime = Math.max(0.0, totalDuration - 0.001)
         this.isActionGestureActive = false
+        this.currentActionKeyword = null
       }
 
       // Audio stream paused or finished between sentences; debounce before returning to idle
@@ -1590,6 +1621,7 @@ export class Speech2MotionManager {
     // When current track ends:
     if (this.playbackTime >= totalDuration) {
       this.isActionGestureActive = false
+      this.currentActionKeyword = null
       if (this.speechTrackQueue.length > 0 && (nowAudioTime <= 0 || nowAudioTime >= this.speechTrackQueue[0].startTime - 0.04)) {
         if (this._switchNextQueuedSpeechTrack(nowAudioTime)) return
       }
@@ -1665,6 +1697,9 @@ export class Speech2MotionManager {
     // Layer subtle organic idle standing movements (faded out when speaking or in action gesture):
     this._applyIdleNeckMovement(safeDelta)
     this._applyIdleHandMovements(safeDelta)
+
+    // Layer procedural hand & finger shaping during action gestures (Peace Sign, Thumbs Up, OK Sign, Heart Fingers):
+    this._applyGestureHandPoses(safeDelta)
 
     // Organic idle head shifts & natural gaze wander (suppressed during speech/action to maintain eye contact):
     this._applyNaturalHeadAndGaze(safeDelta)
@@ -1862,6 +1897,133 @@ export class Speech2MotionManager {
           bone.quaternion.multiply(this._idleHandQuat)
         }
       }
+    }
+  }
+
+  /**
+   * Layer procedural hand & finger shaping during action gestures.
+   * Gives iconic anime clarity to Peace Sign (比V), Thumbs Up (竖起拇指),
+   * OK Sign (OK手势), and Finger Heart (比心).
+   */
+  _applyGestureHandPoses(delta) {
+    const isAction = Boolean(this.isActionGestureActive || this.currentTrack?.isActionGesture)
+    if (!isAction && !this._gestureHandWeight) return
+
+    const kw = this.currentActionKeyword || ''
+    const isPeaceSign = (kw === '比V' || kw === '双手比V' || kw === '右手比V')
+    const isThumbsUp = (kw === '竖起拇指')
+    const isOkSign = (kw === 'OK手势')
+    const isHeartFingers = (kw === '比心')
+
+    const totalDur = this.currentTrack?.duration || 4.0
+    const pTime = this.playbackTime || 0
+
+    // Compute target weight (0.0 to 1.0) with smooth ease-in, hold, and ease-out:
+    let targetWeight = 0.0
+    if (isAction && (isPeaceSign || isThumbsUp || isOkSign || isHeartFingers)) {
+      const leadIn = 0.35
+      const leadOut = 0.45
+      if (pTime < leadIn) {
+        targetWeight = this._smoothstep(pTime / leadIn)
+      } else if (pTime < totalDur - leadOut) {
+        targetWeight = 1.0
+      } else {
+        targetWeight = 1.0 - this._smoothstep((pTime - (totalDur - leadOut)) / leadOut)
+      }
+    }
+
+    if (!this._gestureHandWeight) this._gestureHandWeight = 0.0
+    this._gestureHandWeight = THREE.MathUtils.lerp(this._gestureHandWeight, targetWeight, delta * 12.0)
+    const w = this._gestureHandWeight
+    if (w < 0.005) return
+
+    if (!this._gestureHandEuler) this._gestureHandEuler = new THREE.Euler(0, 0, 0, 'XYZ')
+    if (!this._gestureHandQuat) this._gestureHandQuat = new THREE.Quaternion()
+
+    const applyBoneRot = (boneName, x, y, z) => {
+      const bone = this.getBone(boneName)
+      if (!bone) return
+      this._gestureHandEuler.set(x * w, y * w, z * w, 'XYZ')
+      this._gestureHandQuat.setFromEuler(this._gestureHandEuler)
+      bone.quaternion.multiply(this._gestureHandQuat)
+    }
+
+    if (isPeaceSign) {
+      // Right hand Peace Sign (V-Sign):
+      // Index & Middle straight with subtle V-spread
+      applyBoneRot('IndexFinger1_R', -0.04, 0, 0.12)
+      applyBoneRot('IndexFinger2_R', 0, 0, 0)
+      applyBoneRot('IndexFinger3_R', 0, 0, 0)
+      applyBoneRot('MiddleFinger1_R', -0.04, 0, -0.12)
+      applyBoneRot('MiddleFinger2_R', 0, 0, 0)
+      applyBoneRot('MiddleFinger3_R', 0, 0, 0)
+
+      // Ring & Pinky curled tightly into palm
+      applyBoneRot('RingFinger1_R', -1.25, 0, 0)
+      applyBoneRot('RingFinger2_R', -1.35, 0, 0)
+      applyBoneRot('RingFinger3_R', -1.10, 0, 0)
+      applyBoneRot('LittleFinger1_R', -1.25, 0, 0)
+      applyBoneRot('LittleFinger2_R', -1.35, 0, 0)
+      applyBoneRot('LittleFinger3_R', -1.10, 0, 0)
+
+      // Thumb folded across curled ring finger
+      applyBoneRot('Thumb0_R', -0.35, 0.20, -0.15)
+      applyBoneRot('Thumb1_R', -0.60, 0, 0)
+      applyBoneRot('Thumb2_R', -0.50, 0, 0)
+
+      // If double peace sign, also apply to left hand
+      if (kw === '双手比V') {
+        applyBoneRot('IndexFinger1_L', -0.04, 0, -0.12)
+        applyBoneRot('IndexFinger2_L', 0, 0, 0)
+        applyBoneRot('IndexFinger3_L', 0, 0, 0)
+        applyBoneRot('MiddleFinger1_L', -0.04, 0, 0.12)
+        applyBoneRot('MiddleFinger2_L', 0, 0, 0)
+        applyBoneRot('MiddleFinger3_L', 0, 0, 0)
+        applyBoneRot('RingFinger1_L', -1.25, 0, 0)
+        applyBoneRot('RingFinger2_L', -1.35, 0, 0)
+        applyBoneRot('RingFinger3_L', -1.10, 0, 0)
+        applyBoneRot('LittleFinger1_L', -1.25, 0, 0)
+        applyBoneRot('LittleFinger2_L', -1.35, 0, 0)
+        applyBoneRot('LittleFinger3_L', -1.10, 0, 0)
+        applyBoneRot('Thumb0_L', -0.35, -0.20, 0.15)
+        applyBoneRot('Thumb1_L', -0.60, 0, 0)
+        applyBoneRot('Thumb2_L', -0.50, 0, 0)
+      }
+    } else if (isThumbsUp) {
+      for (const f of ['IndexFinger', 'MiddleFinger', 'RingFinger', 'LittleFinger']) {
+        applyBoneRot(`${f}1_R`, -1.25, 0, 0)
+        applyBoneRot(`${f}2_R`, -1.35, 0, 0)
+        applyBoneRot(`${f}3_R`, -1.10, 0, 0)
+      }
+      applyBoneRot('Thumb0_R', 0.25, 0, 0)
+      applyBoneRot('Thumb1_R', 0, 0, 0)
+      applyBoneRot('Thumb2_R', 0, 0, 0)
+    } else if (isOkSign) {
+      applyBoneRot('IndexFinger1_R', -0.90, 0, 0)
+      applyBoneRot('IndexFinger2_R', -1.10, 0, 0)
+      applyBoneRot('IndexFinger3_R', -0.80, 0, 0)
+      applyBoneRot('Thumb0_R', -0.40, 0.20, 0)
+      applyBoneRot('Thumb1_R', -0.60, 0, 0)
+      applyBoneRot('Thumb2_R', -0.40, 0, 0)
+      applyBoneRot('MiddleFinger1_R', 0, 0, -0.08)
+      applyBoneRot('RingFinger1_R', 0, 0, -0.05)
+      applyBoneRot('LittleFinger1_R', 0, 0, -0.03)
+    } else if (isHeartFingers) {
+      applyBoneRot('MiddleFinger1_R', -1.25, 0, 0)
+      applyBoneRot('MiddleFinger2_R', -1.35, 0, 0)
+      applyBoneRot('MiddleFinger3_R', -1.10, 0, 0)
+      applyBoneRot('RingFinger1_R', -1.25, 0, 0)
+      applyBoneRot('RingFinger2_R', -1.35, 0, 0)
+      applyBoneRot('RingFinger3_R', -1.10, 0, 0)
+      applyBoneRot('LittleFinger1_R', -1.25, 0, 0)
+      applyBoneRot('LittleFinger2_R', -1.35, 0, 0)
+      applyBoneRot('LittleFinger3_R', -1.10, 0, 0)
+      applyBoneRot('IndexFinger1_R', 0, 0, 0)
+      applyBoneRot('IndexFinger2_R', -0.60, 0, 0)
+      applyBoneRot('IndexFinger3_R', -0.30, 0, 0)
+      applyBoneRot('Thumb0_R', 0.10, 0.25, 0)
+      applyBoneRot('Thumb1_R', -0.30, 0, 0)
+      applyBoneRot('Thumb2_R', -0.20, 0, 0)
     }
   }
 

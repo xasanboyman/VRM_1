@@ -1341,7 +1341,7 @@ export class AnimationManager {
     return resolved
   }
 
-  setExpression(name, duration = 3.0) {
+  setExpression(name, duration = 3.0, facialOnly = false) {
     const winkNames = ['wink', 'wink2', 'wink2_right', 'tehepero', 'てへぺろ', 'ウィンク', 'ウィンク２', 'ウィンク２右']
     const isWink = winkNames.includes(String(name || '').toLowerCase().trim())
     // Playful winks and tehepero expressions should be brief accents (~0.75s) so the eye never looks stuck shut
@@ -1355,7 +1355,7 @@ export class AnimationManager {
     this.currentEmotion = name
 
     // Trigger full body mocap emotion posture only for genuine whole-body emotions,
-    // and NEVER interrupt an active action gesture (like 360 spin or dance)
+    // and NEVER when facialOnly is requested, when an action gesture is active, or during active speech
     const wholeBodyEmotions = [
       'shy', 'blush', 'sad', 'tears', 'tear', 'cry', 'crying', 'angry', 'mad', 'happy', 'joy',
       'surprised', 'thinking', 'curious', 'bored', 'nervous', 'relief',
@@ -1364,14 +1364,16 @@ export class AnimationManager {
     const isWholeBodyEmotion = wholeBodyEmotions.includes(String(name || '').toLowerCase().trim())
 
     if (this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline && !this.speech2motion.isActionGestureActive) {
-      if (isWholeBodyEmotion) {
+      if (isWholeBodyEmotion && !facialOnly) {
         if (!this.speech2motion.isSpeechActive) {
           this.speech2motion.triggerEmotion(name)
         } else {
           this.speech2motion.currentEmotion = name
         }
+      } else {
+        this.speech2motion.currentEmotion = name
       }
-    } else if (isWholeBodyEmotion && (!this.speech2motion || !this.speech2motion.isOnline)) {
+    } else if (isWholeBodyEmotion && !facialOnly && (!this.speech2motion || !this.speech2motion.isOnline)) {
       this.triggerAnimation(name)
     }
 
@@ -1380,7 +1382,7 @@ export class AnimationManager {
       this.expressionTimer = setTimeout(() => {
         this._applyExpressionTarget('neutral')
         this.currentEmotion = 'idle'
-        if (this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline && !this.speech2motion.isSpeechActive && !this.speech2motion.isActionGestureActive) {
+        if (!facialOnly && this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline && !this.speech2motion.isSpeechActive && !this.speech2motion.isActionGestureActive) {
           this.speech2motion.triggerEmotion('idle')
         }
       }, effectiveDuration * 1000)

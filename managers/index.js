@@ -336,14 +336,18 @@ export async function createVRMChatSystem(canvas, options = {}) {
         'Call set_background_image(prompt) when you or the user want to search and set the background to a real stock photo (e.g., search keywords like "cozy library", "sandy beach", "cyberpunk lab").'
       let pendingTurnGesture = null
       let standaloneGestureTimer = null
+      let turnActionGestureTriggered = false
       const triggerAnimation = (animName) => {
         if (!animName) return
         pendingTurnGesture = animName
+        turnActionGestureTriggered = true
 
         // If an expression with same name exists (like cry/tears, blush, angry), trigger facial expression immediately!
         const exprCandidate = String(animName).toLowerCase().trim()
         if (['cry', 'crying', 'tears', 'sad', 'angry', 'mad', 'blush', 'shy', 'happy', 'surprised', 'thinking'].includes(exprCandidate)) {
-          animationManager?.setExpression(exprCandidate, 4.0)
+          animationManager?.setExpression(exprCandidate, 4.0, true)
+        } else if (['peace_sign', 'peace', 'v_sign', 'victory'].includes(exprCandidate)) {
+          animationManager?.setExpression('happy', 4.0, true)
         }
 
         if (standaloneGestureTimer) {
@@ -351,16 +355,16 @@ export async function createVRMChatSystem(canvas, options = {}) {
           standaloneGestureTimer = null
         }
 
-        // If model is NOT speaking and no audio is buffering, wait 1200ms to check if speech audio accompanies it.
+        // If model is NOT speaking and no audio is buffering, wait 2500ms to check if speech audio accompanies it.
         // If speech audio follows, pendingTurnGesture is seamlessly combined into speech motion at the exact word!
-        // If no speech audio follows within 1200ms, trigger standalone gesture!
+        // If no speech audio follows within 2500ms, trigger standalone gesture!
         if (pendingModelAudioChunks.length === 0 && !audioManager.isPlaying) {
           standaloneGestureTimer = setTimeout(() => {
             if (pendingModelAudioChunks.length === 0 && !audioManager.isPlaying && pendingTurnGesture === animName) {
               pendingTurnGesture = null
               animationManager?.triggerNamedAnimation(animName)
             }
-          }, 1200)
+          }, 2500)
         }
       }
       const greetingRegex = /\b(hi|hello|hey|yo|sup|good morning|good afternoon|good evening)\b/i
@@ -383,6 +387,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
           standaloneGestureTimer = null
         }
         pendingTurnGesture = null
+        turnActionGestureTriggered = false
         pendingModelAudioChunks = []
         pendingModelText = ''
         lastSentenceFlushedText = ''
@@ -553,14 +558,17 @@ export async function createVRMChatSystem(canvas, options = {}) {
         let activeEmotion = animationManager?.currentEmotion || animationManager?.speech2motion?.currentEmotion || null
         if (detected) {
           activeEmotion = detected.body
-          animationManager?.setExpression(detected.face, Math.max(audioDuration + 1.5, 4.0))
+          animationManager?.setExpression(detected.face, Math.max(audioDuration + 1.5, 4.0), true)
         } else if (!activeEmotion || activeEmotion === 'idle') {
           activeEmotion = 'neutral'
         }
 
         // 2. Extract word timings and action keywords
+        // If an action gesture was already triggered in this turn and no explicit gesture is pending,
+        // do not detect repetitive action keywords in subsequent sentences of the same turn!
+        const excludeOpt = (turnActionGestureTriggered && !pendingTurnGesture) ? 'all_actions' : null
         const timingInfo = animationManager?.speech2motion?.extractTimingAndKeywords
-          ? animationManager.speech2motion.extractTimingAndKeywords(utteranceText, audioDuration)
+          ? animationManager.speech2motion.extractTimingAndKeywords(utteranceText, audioDuration, excludeOpt)
           : { speechTime: null, motionKeywords: null }
 
         // If a gesture tool was called for this turn (e.g. trigger_gesture), seamlessly merge it into speech motion!
@@ -644,6 +652,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
           if (alreadyMatched) {
             console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] aligned directly to spoken word in text`)
             pendingTurnGesture = null
+            turnActionGestureTriggered = true
           } else {
             // 2. Check if utteranceText contains the matching word/phrase and align to its exact character offset
             const pat = gesturePatternMap[lowerG]
@@ -653,6 +662,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
               timingInfo.motionKeywords.sort((a, b) => a[0] - b[0])
               console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] aligned to word at char index ${m.index}`)
               pendingTurnGesture = null
+              turnActionGestureTriggered = true
             } else {
               // Check if the keyword appears in an upcoming sentence of this turn
               const remainingModelText = (pendingModelText && pendingModelText.length > currentFullText.length)
@@ -669,6 +679,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
                 timingInfo.motionKeywords.sort((a, b) => a[0] - b[0])
                 console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] synchronized with spoken utterance`)
                 pendingTurnGesture = null
+                turnActionGestureTriggered = true
               }
             }
           }
@@ -827,7 +838,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
         systemPrompt,
         (audioData) => handleIncomingAudioChunk(audioData),
         (animName) => triggerAnimation(animName),
-        (exprName, dur) => animationManager?.setExpression(exprName, dur),
+        (exprName, dur) => animationManager?.setExpression(exprName, dur, true),
         async () => {
           if (!lookAtOptions.user) {
             sendTelegramLog('look_at_user blocked', 'Disabled in settings')
@@ -934,6 +945,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
         () => {
           console.log('🏁 Gemini Live turnComplete received -> Flushing final model utterance')
           flushModelUtterance(true)
+          turnActionGestureTriggered = false
         },
       )
     },
@@ -942,6 +954,8 @@ export async function createVRMChatSystem(canvas, options = {}) {
       if (!aiClient.isSessionOpen) {
         throw new Error('Live session is not active')
       }
+      turnActionGestureTriggered = false
+      pendingTurnGesture = null
       await aiClient.sendText(text)
     },
 
