@@ -337,16 +337,16 @@ export async function createVRMChatSystem(canvas, options = {}) {
           standaloneGestureTimer = null
         }
 
-        // If model is NOT speaking and no audio is buffering, wait 250ms to check if speech audio accompanies it.
-        // If speech audio follows, pendingTurnGesture is combined into speech motion.
-        // If no speech audio follows within 250ms, trigger standalone gesture!
+        // If model is NOT speaking and no audio is buffering, wait 1200ms to check if speech audio accompanies it.
+        // If speech audio follows, pendingTurnGesture is seamlessly combined into speech motion at the exact word!
+        // If no speech audio follows within 1200ms, trigger standalone gesture!
         if (pendingModelAudioChunks.length === 0 && !audioManager.isPlaying) {
           standaloneGestureTimer = setTimeout(() => {
             if (pendingModelAudioChunks.length === 0 && !audioManager.isPlaying && pendingTurnGesture === animName) {
               pendingTurnGesture = null
               animationManager?.triggerNamedAnimation(animName)
             }
-          }, 250)
+          }, 1200)
         }
       }
       const greetingRegex = /\b(hi|hello|hey|yo|sup|good morning|good afternoon|good evening)\b/i
@@ -544,12 +544,67 @@ export async function createVRMChatSystem(canvas, options = {}) {
             tears: '哭泣',
             angry: '生气',
             happy: '开心',
+            jump: '开心蹦跳',
+            quiet: '安静手势',
+            hands_up: '举手',
           }
+          const gesturePatternMap = {
+            salute: /\b(salute[sd]?|saluting|yes\s*sir|reporting|at\s*attention|at\s*your\s*service)\b/i,
+            wave: /\b(wave[sd]?|waving|greeting[s]?|hello|bye|goodbye|hi)\b/i,
+            dance: /\b(dance[sd]?|dancing|gymnastics)\b/i,
+            spin: /\b(spin(?:s|ning)?(?:\s*360|\s*degrees?)?|sping(?:\s*360)?|turn\s*around|rotate[sd]?|twirl(?:s|ed|ing)?)\b/i,
+            heart_fingers: /\b(heart\s*fingers?|kpop\s*heart|love\s*you|my\s+heart)\b/i,
+            shrug: /\b(as\s+you\s+insist|all\s+right\s+all\s+right|if\s+you\s+insist|shrug(?:s|ged|ging)?)\b/i,
+            bow: /\b(bow(?:s|ed|ing)?|thank\s*you)\b/i,
+            clap: /\b(clap(?:s|ped|ping)?|applause)\b/i,
+            hands_on_hips: /\b(hands\s+on\s+hips|sassy|tsundere|smug)\b/i,
+            facepalm: /\b(face\s*palm(?:s|ed|ing)?|facepalm)\b/i,
+            cheer: /\b(cheer(?:s|ing)?|fight|let's\s+go|hooray|yay|hurray)\b/i,
+            thinking: /\b(think(?:s|ing)?|thought|ponder(?:s|ed|ing)?|let\s*me\s*think)\b/i,
+            nod: /\b(nod(?:s|ded|ding)?|agree[sd]?|approval)\b/i,
+            shake_head: /\b(shake\s*(?:my\s*)?head|disagree[sd]?|no\s*way)\b/i,
+            thumbs_up: /\b(thumbs?\s*up)\b/i,
+            shy: /\b(shy|blush(?:es|ed|ing)?|embarrassed|flustered|bashful)\b/i,
+            jump: /\b(jump(?:s|ed|ing)?|bounce[sd]?|bouncing)\b/i,
+            cry: /\b(cry(?:ing)?|cries|weep(?:ing)?|tears|sad|grief|sorrow)\b/i,
+            crying: /\b(cry(?:ing)?|cries|weep(?:ing)?|tears|sad|grief|sorrow)\b/i,
+            tears: /\b(cry(?:ing)?|cries|weep(?:ing)?|tears|sad|grief|sorrow)\b/i,
+            angry: /\b(angry|furious|mad|annoyed|rage)\b/i,
+            happy: /\b(happy|joy|cheerful|excited|yay)\b/i,
+            quiet: /\b(quiet|hush|shh)\b/i,
+            hands_up: /\b(hands?\s*up|raise\s*(?:your\s+|my\s+)?hands?|put\s+your\s+hands\s+up|surrender)\b/i,
+          }
+
           const lowerG = String(pendingTurnGesture).toLowerCase().trim().replace(/[\s-]+/g, '_')
           const mappedKw = animationManager?.speech2motion?.gestureKeywordMap?.[lowerG] || gestureMap[lowerG] || pendingTurnGesture
+
           if (!timingInfo.motionKeywords) timingInfo.motionKeywords = []
-          timingInfo.motionKeywords.unshift([0, mappedKw])
-          pendingTurnGesture = null
+
+          // 1. Check if timingInfo already detected this gesture from speech text (e.g. via word matching or asterisks)
+          const alreadyMatched = timingInfo.motionKeywords.some((item) => item[1] === mappedKw)
+          if (alreadyMatched) {
+            console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] aligned directly to spoken word in text`)
+            pendingTurnGesture = null
+          } else {
+            // 2. Check if utteranceText contains the matching word/phrase and align to its exact character offset
+            const pat = gesturePatternMap[lowerG]
+            const m = pat ? pat.exec(utteranceText) : null
+            if (m) {
+              timingInfo.motionKeywords.push([m.index, mappedKw])
+              timingInfo.motionKeywords.sort((a, b) => a[0] - b[0])
+              console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] aligned to word at char index ${m.index}`)
+              pendingTurnGesture = null
+            } else if (isFinalTurn) {
+              // 3. Fallback for final turn when the model triggered the tool but didn't speak the specific word
+              if (timingInfo.motionKeywords.length === 0) {
+                timingInfo.motionKeywords.push([0, mappedKw])
+                console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] applied to final utterance`)
+              }
+              pendingTurnGesture = null
+            } else {
+              console.log(`✨ Speech2Motion: Preserving gesture "${lowerG}" for subsequent utterance containing keyword`)
+            }
+          }
         }
 
         // 3. Pre-fetch motion track immediately in parallel so it is ready before current audio ends
@@ -592,6 +647,12 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
       const handleIncomingAudioChunk = (int16Data) => {
         if (!int16Data || int16Data.length === 0) return
+
+        // Audio has arrived for this turn: cancel any pending standalone gesture so it merges into speech!
+        if (standaloneGestureTimer) {
+          clearTimeout(standaloneGestureTimer)
+          standaloneGestureTimer = null
+        }
 
         // When model audio arrives, clear user speaking state
         audioManager.setUserSpeakingState(false)

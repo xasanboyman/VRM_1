@@ -207,6 +207,7 @@ export class Speech2MotionManager {
     this.speechTrackQueue = []
     this.currentEmotion = 'idle'
     this.isActionGestureActive = false
+    this.cachedIdleTrack = null
 
     // Cross-fade state
     this.transitionFromPose = new Map()
@@ -454,6 +455,7 @@ export class Speech2MotionManager {
     try {
       const initialTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
       if (initialTrack) {
+        this.cachedIdleTrack = initialTrack
         this.isOnline = true
         this.isInfiniteActive = true
         this.currentTrack = initialTrack
@@ -485,6 +487,7 @@ export class Speech2MotionManager {
       const track = await this._fetchTrack({ isIdle: true, duration: 4.0 })
       if (track && this.isIdleActive) {
         this.nextTrack = track
+        this.cachedIdleTrack = track
       }
     } catch (err) {
       console.warn('Speech2Motion pre-fetch idle error:', err)
@@ -777,14 +780,21 @@ export class Speech2MotionManager {
     this.speechStartTime = item.startTime
     this.speechAudioDuration = item.duration
     this.transitionElapsed = 0
-    this.transitionBlendDuration = 0.35 // 350ms smooth continuous crossfade
-    this.isActionGestureActive = Boolean(item.isActionGesture)
+    this.transitionBlendDuration = 0.45 // 450ms smooth continuous crossfade
+    this.isActionGestureActive = Boolean(item.isActionGesture || track.isActionGesture)
     this._speechSilenceTimer = 0
 
     // Adaptive timing calculation: adjust animation speed (slow or fast) based on audio duration
     const motionDur = track.duration || (track.nFrames / (track.fps || 30.0)) || 0
     const audioDur = item.duration || this.speechAudioDuration || 0
-    if (this.adaptiveSpeedEnabled && audioDur > 0.1 && motionDur > 0.1) {
+    if (this.isActionGestureActive) {
+      // For action gestures (spin, salute, wave, dance), maintain 1:1 natural human speed (1.0x)
+      // so keyframes land precisely on the spoken word timestamp without unnatural compression or rushing!
+      this.adaptivePlaybackSpeed = 1.0
+      this.motionScaledDuration = motionDur
+      this.isDurationMatched = false
+      console.log(`⏱️ Speech2Motion Action Gesture: 1:1 hardware synchronization locked (motion=${motionDur.toFixed(2)}s, audio=${audioDur.toFixed(2)}s, speed=1.00x)`)
+    } else if (this.adaptiveSpeedEnabled && audioDur > 0.1 && motionDur > 0.1) {
       const idealSpeed = motionDur / audioDur
       // Bound within human pacing limits (0.55x to 1.30x)
       const clampedSpeed = Math.max(this.minSpeechSpeed, Math.min(this.maxSpeechSpeed, idealSpeed))
@@ -810,8 +820,7 @@ export class Speech2MotionManager {
     this._activateSpeechTrack(item)
     if (nowAudioTime > 0 && item.startTime > 0 && nowAudioTime >= item.startTime) {
       const elapsed = nowAudioTime - item.startTime
-      const initialProgress = item.duration > 0 ? Math.min(1.0, elapsed / item.duration) : 0
-      this.playbackTime = initialProgress * (item.track?.duration || 0)
+      this.playbackTime = Math.max(0.0, Math.min(item.track?.duration || 0, elapsed))
     } else {
       this.playbackTime = 0.0
     }
@@ -922,7 +931,7 @@ export class Speech2MotionManager {
     if (this._isGeneratingFreshIdle) return
     this._isGeneratingFreshIdle = true
 
-    console.log('🔄 Speech2Motion: Generating fresh idle track after motion/speech...')
+    console.log('🔄 Speech2Motion: Transitioning smoothly to idle after motion/speech...')
 
     // Capture instantaneous bone quaternions at the moment of transition
     this.transitionFromPose.clear()
@@ -938,13 +947,30 @@ export class Speech2MotionManager {
     this.isActionGestureActive = false
     this.nextTrack = null
 
+    // If we already have a cached calm idle track in memory, transition IMMEDIATELY with 0ms network lag!
+    if (this.cachedIdleTrack) {
+      this._clearAppliedBlendshapes()
+      this.currentTrack = this.cachedIdleTrack
+      this.playbackTime = 0
+      this.isPlaying = true
+      this.isIdleActive = true
+      this.transitionElapsed = 0
+      this.transitionBlendDuration = 0.50 // 500ms silky-smooth Hermite crossfade
+      this.currentEmotion = 'idle'
+      console.log('✅ Speech2Motion: Cached idle active immediately, crossfading smoothly')
+    }
+
     try {
       const freshTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
       if (!freshTrack) {
         this._isGeneratingFreshIdle = false
-        this._handleBackendOffline('Fresh idle generation returned empty')
+        if (!this.cachedIdleTrack) {
+          this._handleBackendOffline('Fresh idle generation returned empty')
+        }
         return
       }
+
+      this.cachedIdleTrack = freshTrack
 
       // If a new speech utterance or action gesture started while fetching, do not overwrite
       if (this.isSpeechActive || this.isActionGestureActive) {
@@ -953,7 +979,14 @@ export class Speech2MotionManager {
         return
       }
 
-      // Re-capture pose so blending starts exactly from where bones are right now
+      // If we already transitioned to cachedIdleTrack, keep playing it and queue freshTrack as nextTrack
+      if (this.isIdleActive && this.currentTrack) {
+        this.nextTrack = freshTrack
+        this._isGeneratingFreshIdle = false
+        return
+      }
+
+      // Otherwise, blend from current pose to freshTrack
       this.transitionFromPose.clear()
       for (const [name, bone] of this.boneCache.entries()) {
         if (bone && bone.quaternion) {
@@ -967,7 +1000,7 @@ export class Speech2MotionManager {
       this.isPlaying = true
       this.isIdleActive = true
       this.transitionElapsed = 0
-      this.transitionBlendDuration = 0.45 // 450ms smooth continuous crossfade
+      this.transitionBlendDuration = 0.50 // 500ms smooth continuous crossfade
       this.currentEmotion = 'idle'
       console.log('✅ Speech2Motion: Fresh idle successfully active and blending')
 
@@ -1274,13 +1307,13 @@ export class Speech2MotionManager {
     // Check if speech audio is actively playing or scheduled from audioManager
     const audioMgr = this.audioManager || (typeof window !== 'undefined' ? window.vrmAudioManager : null)
     const nowAudioTime = (audioMgr && audioMgr.audioCtx) ? audioMgr.audioCtx.currentTime : 0
-    const isSpeakingAudio = audioMgr && audioMgr.isPlaying && audioMgr.audioCtx && this.speechStartTime > 0
-    const hasScheduledAudio = audioMgr && audioMgr.audioCtx && (audioMgr.nextStartTime > (audioMgr.audioCtx.currentTime + 0.05))
+    const isSpeakingAudio = Boolean(audioMgr && audioMgr.isPlaying && audioMgr.audioCtx && this.speechStartTime > 0)
+    const hasScheduledAudio = Boolean(audioMgr && audioMgr.audioCtx && (audioMgr.nextStartTime > (audioMgr.audioCtx.currentTime + 0.05)))
 
-    // Seamlessly transition into the next queued speech track when it's time
+    // Seamlessly transition into the next queued speech track right before audio begins (40ms handover, no freeze!)
     if (this.speechTrackQueue.length > 0) {
       const nextItem = this.speechTrackQueue[0]
-      const shouldSwitch = (nowAudioTime > 0 && nowAudioTime >= (nextItem.startTime - 0.35)) ||
+      const shouldSwitch = (nowAudioTime > 0 && nowAudioTime >= (nextItem.startTime - 0.04)) ||
                            (nowAudioTime <= 0 && this.playbackTime >= totalDuration)
       if (shouldSwitch) {
         if (this._switchNextQueuedSpeechTrack(nowAudioTime)) return
@@ -1291,52 +1324,62 @@ export class Speech2MotionManager {
       this._speechSilenceTimer = 0
       // Hardware-synced to the audio output clock
       const audioElapsed = audioMgr.audioCtx.currentTime - this.speechStartTime
-      const scaledDuration = this.motionScaledDuration || totalDuration
 
       if (audioElapsed < 0) {
-        // Holding during lead-in crossfade before audio start:
-        // Hold frame 0 while Hermite slerp blends from previous pose into Track start pose!
+        // Holding during lead-in before audio start:
         this.playbackTime = 0.0
-      } else if (audioElapsed <= scaledDuration) {
-        // Continuous, smooth hardware-locked progression matching spoken audio
-        const progress = Math.max(0.0, Math.min(1.0, audioElapsed / Math.max(0.001, scaledDuration)))
-        const targetPlaybackTime = progress * totalDuration
-
-        // Smoothly glide toward targetPlaybackTime locked to the audio clock
-        const drift = targetPlaybackTime - this.playbackTime
-        if (Math.abs(drift) > 0.20 || drift < -0.01) {
-          this.playbackTime = targetPlaybackTime
+      } else if (this.isActionGestureActive || this.currentTrack?.isActionGesture) {
+        // For action gestures: 1:1 hardware synchronization with audio clock while audio is speaking,
+        // followed by natural continuous follow-through to complete the movement!
+        if (audioElapsed <= this.speechAudioDuration) {
+          const targetPlaybackTime = Math.min(totalDuration, audioElapsed)
+          const drift = targetPlaybackTime - this.playbackTime
+          if (Math.abs(drift) > 0.35) {
+            this.playbackTime = targetPlaybackTime
+          } else {
+            this.playbackTime = THREE.MathUtils.lerp(this.playbackTime, targetPlaybackTime, Math.min(1.0, safeDelta * 18.0))
+          }
         } else {
-          this.playbackTime = THREE.MathUtils.lerp(this.playbackTime, targetPlaybackTime, Math.min(1.0, safeDelta * 22.0))
+          // Audio sentence ended, but physical mocap action gesture continues to its natural end:
+          this.playbackTime = Math.min(totalDuration, this.playbackTime + safeDelta * 1.0)
         }
         this.playbackTime = Math.max(0.0, Math.min(totalDuration, this.playbackTime))
       } else {
-        // Speech audio is longer than track's scaled duration: check if next item is queued
-        if (this.speechTrackQueue.length > 0 && (nowAudioTime <= 0 || nowAudioTime >= this.speechTrackQueue[0].startTime - 0.35)) {
-          if (this._switchNextQueuedSpeechTrack(nowAudioTime)) return
-        }
+        // Conversational speech track:
+        const scaledDuration = this.motionScaledDuration || totalDuration
+        const progress = Math.max(0.0, Math.min(1.0, audioElapsed / Math.max(0.001, scaledDuration)))
+        const targetPlaybackTime = progress * totalDuration
 
-        // CRITICAL FIX: The motion gesture has reached its natural conclusion.
-        // DO NOT loop the tail over and over again!
-        // Repeating a gesture over and over creates the unnatural "overlapping / repetitive" feeling.
-        // Instead, hold the expressive resolved end-pose at the final frame,
-        // supported by natural respiration and gaze micro-movement, until audio ends or next track starts!
-        this.playbackTime = Math.max(0.0, totalDuration - 0.001)
+        const drift = targetPlaybackTime - this.playbackTime
+        if (Math.abs(drift) > 0.35) {
+          this.playbackTime = targetPlaybackTime
+        } else {
+          this.playbackTime = THREE.MathUtils.lerp(this.playbackTime, targetPlaybackTime, Math.min(1.0, safeDelta * 18.0))
+        }
+        this.playbackTime = Math.max(0.0, Math.min(totalDuration, this.playbackTime))
       }
     } else if (this.isSpeechActive) {
-      if (this.speechTrackQueue.length > 0 && (nowAudioTime <= 0 || nowAudioTime >= this.speechTrackQueue[0].startTime - 0.35)) {
+      if (this.speechTrackQueue.length > 0 && (nowAudioTime <= 0 || nowAudioTime >= this.speechTrackQueue[0].startTime - 0.04)) {
         if (this._switchNextQueuedSpeechTrack(nowAudioTime)) return
       }
-      // Audio stream paused or finished between sentences; debounce before returning to idle
-      this._speechSilenceTimer = (this._speechSilenceTimer || 0) + safeDelta
+
+      // Check if action gesture is still in physical motion
+      const isActionStillPlaying = (this.isActionGestureActive || this.currentTrack?.isActionGesture) && (this.playbackTime < totalDuration - 0.05)
+
       if (this.playbackTime < totalDuration) {
-        this.playbackTime = Math.min(totalDuration, this.playbackTime + safeDelta * (this.adaptivePlaybackSpeed || this.playbackSpeed))
+        const speed = (this.isActionGestureActive || this.currentTrack?.isActionGesture) ? 1.0 : (this.adaptivePlaybackSpeed || this.playbackSpeed)
+        this.playbackTime = Math.min(totalDuration, this.playbackTime + safeDelta * speed)
       } else {
         this.playbackTime = Math.max(0.0, totalDuration - 0.001)
+        this.isActionGestureActive = false
       }
 
-      // Only transition to idle after sustained silence (0.6s) when no more speech is incoming and no audio scheduled
-      if (this._speechSilenceTimer >= 0.6 && !hasScheduledAudio && this.speechTrackQueue.length === 0) {
+      // Audio stream paused or finished between sentences; debounce before returning to idle
+      this._speechSilenceTimer = (this._speechSilenceTimer || 0) + safeDelta
+
+      // Only transition to idle after sustained silence (1.2s), when no more audio is scheduled,
+      // no speech is queued, audio is not playing, and action gesture has fully resolved!
+      if (this._speechSilenceTimer >= 1.2 && !hasScheduledAudio && !isSpeakingAudio && this.speechTrackQueue.length === 0 && !isActionStillPlaying) {
         this.isSpeechActive = false
         this.speechStartTime = 0
         this.speechAudioDuration = 0
@@ -1358,7 +1401,7 @@ export class Speech2MotionManager {
     // When current track ends:
     if (this.playbackTime >= totalDuration) {
       this.isActionGestureActive = false
-      if (this.speechTrackQueue.length > 0 && (nowAudioTime <= 0 || nowAudioTime >= this.speechTrackQueue[0].startTime - 0.35)) {
+      if (this.speechTrackQueue.length > 0 && (nowAudioTime <= 0 || nowAudioTime >= this.speechTrackQueue[0].startTime - 0.04)) {
         if (this._switchNextQueuedSpeechTrack(nowAudioTime)) return
       }
       if (this.currentTrack.is_idle) {
@@ -1378,9 +1421,9 @@ export class Speech2MotionManager {
             }
           }
           this.transitionElapsed = 0
-          this.transitionBlendDuration = 0.40
+          this.transitionBlendDuration = 0.50
         }
-      } else if (this.isSpeechActive || (this._speechSilenceTimer > 0 && this._speechSilenceTimer < 0.6) || this.speechTrackQueue.length > 0) {
+      } else if (this.isSpeechActive || isSpeakingAudio || hasScheduledAudio || (this._speechSilenceTimer > 0 && this._speechSilenceTimer < 1.2) || this.speechTrackQueue.length > 0) {
         // Still in speech or settle period: hold final expressive pose calmly
         this.playbackTime = Math.max(0.0, totalDuration - 0.001)
       } else if (this.isInfiniteActive) {
