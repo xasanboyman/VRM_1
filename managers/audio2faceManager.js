@@ -18,8 +18,11 @@ export class Audio2FaceManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
     const DEFAULT_AUDIO2FACE_URL = 'https://xn--dr8haa.uz/oracle/audio2face'
+    const DEFAULT_AUDIO2FACE_WS_URL = 'wss://xn--dr8haa.uz/oracle/audio2face/api/v1/audio2face/ws'
     const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_AUDIO2FACE_URL
+    const envWsUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_AUDIO2FACE_WS_URL
     this.apiEndpoint = options.apiEndpoint || (envUrl ? `${envUrl}/api/v1/audio2face/generate` : `${DEFAULT_AUDIO2FACE_URL}/api/v1/audio2face/generate`)
+    this.wsEndpoint = options.wsEndpoint || (envWsUrl || DEFAULT_AUDIO2FACE_WS_URL)
     this.profileName = options.profileName || 'Ani-default'
     this.enabled = options.enabled !== false
     this.isAvailable = true
@@ -27,6 +30,14 @@ export class Audio2FaceManager {
     this.sampleRate = options.sampleRate || 24000
     this.smoothingFactor = options.smoothingFactor || 0.65
     this.blendshapeMultiplier = options.blendshapeMultiplier || 1.15
+
+    // Persistent WebSocket for real-time low-latency neural lip-sync
+    this.ws = null
+    this.wsPendingRequests = new Map()
+    this.wsReconnectTimer = null
+    if (this.enabled && this.wsEndpoint) {
+      this._initWebSocket()
+    }
 
     // Playback state
     this.currentTimeline = null
@@ -143,6 +154,76 @@ export class Audio2FaceManager {
     return this.dispatchAudio(speechStartTime)
   }
 
+  _initWebSocket() {
+    if (typeof window === 'undefined' || !this.enabled || !this.wsEndpoint) return
+    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) return
+
+    try {
+      const ws = new WebSocket(this.wsEndpoint)
+      this.ws = ws
+
+      ws.onopen = () => {
+        console.log('⚡ Audio2Face WebSocket connected:', this.wsEndpoint)
+        this.isAvailable = true
+        this.failureCount = 0
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          const reqId = data.request_id
+          if (reqId && this.wsPendingRequests.has(reqId)) {
+            const pending = this.wsPendingRequests.get(reqId)
+            this.wsPendingRequests.delete(reqId)
+            clearTimeout(pending.timer)
+            pending.resolve(data)
+          }
+        } catch (e) {
+          console.warn('Audio2Face WS message parse error:', e)
+        }
+      }
+
+      ws.onerror = () => {
+        // Quietly wait for server
+      }
+
+      ws.onclose = () => {
+        this.ws = null
+        for (const [id, pending] of this.wsPendingRequests.entries()) {
+          clearTimeout(pending.timer)
+          pending.reject(new Error('Audio2Face WebSocket closed'))
+        }
+        this.wsPendingRequests.clear()
+
+        // Reconnect every 5s so it stays online
+        if (this.enabled && !this.wsReconnectTimer) {
+          this.wsReconnectTimer = setTimeout(() => {
+            this.wsReconnectTimer = null
+            this._initWebSocket()
+          }, 5000)
+        }
+      }
+    } catch (_) {}
+  }
+
+  _sendWsRequest(payload, requestId, timeoutMs = 5000) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.wsPendingRequests.delete(requestId)
+        reject(new Error(`Audio2Face WS request timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
+
+      this.wsPendingRequests.set(requestId, { resolve, reject, timer })
+      try {
+        this.ws.send(JSON.stringify(payload))
+      } catch (err) {
+        clearTimeout(timer)
+        this.wsPendingRequests.delete(requestId)
+        reject(err)
+      }
+    })
+  }
+
   /**
    * Flush all accumulated audio and trigger neural blendshape inference.
    */
@@ -179,27 +260,59 @@ export class Audio2FaceManager {
       }
       const b64 = btoa(binary)
 
-      // Send to Audio2Face
-      const response = await fetch(this.apiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          audio_base64: b64,
-          sample_rate: this.sampleRate,
-          profile_name: this.profileName
-        })
-      })
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          console.info(`ℹ️ Audio2Face service connection pending at ${this.apiEndpoint}...`)
-          return
-        }
-        throw new Error(`Audio2Face server returned ${response.status}: ${await response.text()}`)
+      const requestId = 'a2f_' + Math.random().toString(36).substring(2) + Date.now()
+      const payload = {
+        request_id: requestId,
+        audio_base64: b64,
+        sample_rate: this.sampleRate,
+        profile_name: this.profileName
       }
 
-      const res = await response.json()
-      if (res.ok && Array.isArray(res.weights) && res.weights.length > 0) {
+      // 1. Ensure WebSocket is connected
+      if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+        this._initWebSocket()
+      }
+
+      if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+        // Wait briefly for handshake
+        await new Promise((resolve) => {
+          const timer = setTimeout(resolve, 800)
+          const onOpen = () => { clearTimeout(timer); resolve() }
+          const onError = () => { clearTimeout(timer); resolve() }
+          this.ws?.addEventListener('open', onOpen, { once: true })
+          this.ws?.addEventListener('error', onError, { once: true })
+        })
+      }
+
+      let res = null
+      // 2. Ultra low-latency WebSocket first
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        try {
+          res = await this._sendWsRequest(payload, requestId, 5000)
+        } catch (wsErr) {
+          console.warn('Audio2Face WS request failed, falling back to HTTP:', wsErr)
+        }
+      }
+
+      // 3. Fallback to HTTP POST if WebSocket unavailable
+      if (!res || !res.ok) {
+        const response = await fetch(this.apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            console.info(`ℹ️ Audio2Face service connection pending at ${this.apiEndpoint}...`)
+            return
+          }
+          throw new Error(`Audio2Face server returned ${response.status}: ${await response.text()}`)
+        }
+        res = await response.json()
+      }
+
+      if (res && res.ok && Array.isArray(res.weights) && res.weights.length > 0) {
         this.failureCount = 0
         this._appendTimeline(res, speechStartTime)
       }
