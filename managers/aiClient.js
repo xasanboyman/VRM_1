@@ -2214,6 +2214,27 @@ export class AIClient {
             },
           },
           {
+            name: 'set_expression',
+            description:
+              'Trigger a facial expression or emotional morph on the avatar face (e.g. tears when sad or crying, blush when shy/embarrassed, anger_mark when angry, sweat when nervous, star_eyes when amazed, happy, sad, angry, surprised, relaxed, smile, smirk, tehepero, cat_mouth, neutral).',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                expression: {
+                  type: 'STRING',
+                  description:
+                    'The expression name to trigger. Allowed values: tears, crying, blush, blush_lines, anger_mark, sweat, star_eyes, dizzy, shocked, happy, sad, angry, surprised, relaxed, smile, smirk, cat_mouth, tehepero, neutral.',
+                },
+                duration: {
+                  type: 'NUMBER',
+                  description:
+                    'Duration in seconds to hold the expression before fading back to neutral (default: 4.0s).',
+                },
+              },
+              required: ['expression'],
+            },
+          },
+          {
             name: 'set_background_image',
             description: 'Change the background image of the 3D scene. The AI can generate a background based on a prompt or describe a scene to load.',
             parameters: {

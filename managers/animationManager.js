@@ -241,8 +241,11 @@ const EXPRESSION_ALIASES = {
   blush: ['blush', '照れ', 'blush_lines', '////'],
   '照れ': ['照れ', 'blush', 'blush_lines', '////'],
 
-  tears: ['tears', '涙'],
-  '涙': ['涙', 'tears'],
+  tears: ['tears', '涙', 'crying', 'cry', 'tear', 'teardrop', 'teardrops'],
+  tear: ['tears', '涙', 'crying', 'cry', 'tear', 'teardrop'],
+  teardrop: ['tears', '涙', 'crying', 'cry', 'teardrops'],
+  teardrops: ['tears', '涙', 'crying', 'cry', 'teardrop'],
+  '涙': ['涙', 'tears', 'crying', 'cry'],
 
   blush_lines: ['blush_lines', '////', 'blush', '照れ'],
   '////': ['////', 'blush_lines', '照れ', 'blush'],
@@ -535,6 +538,10 @@ export class AnimationManager {
       blush: { happy: 0.3, blush: 1.0 },
       '照れ': { happy: 0.3, blush: 1.0 },
       tears: { sad: 0.8, tears: 1.0 },
+      tear: { sad: 0.8, tears: 1.0 },
+      cry: { sad: 1.0, tears: 1.0 },
+      teardrop: { sad: 0.8, tears: 1.0 },
+      teardrops: { sad: 0.8, tears: 1.0 },
       '涙': { sad: 0.8, tears: 1.0 },
       blush_lines: { happy: 0.3, blush_lines: 1.0 },
       '////': { happy: 0.3, blush_lines: 1.0 },
@@ -1349,7 +1356,7 @@ export class AnimationManager {
     // Trigger full body mocap emotion posture only for genuine whole-body emotions,
     // and NEVER interrupt an active action gesture (like 360 spin or dance)
     const wholeBodyEmotions = [
-      'shy', 'blush', 'sad', 'tears', 'angry', 'mad', 'happy', 'joy',
+      'shy', 'blush', 'sad', 'tears', 'tear', 'cry', 'crying', 'angry', 'mad', 'happy', 'joy',
       'surprised', 'thinking', 'curious', 'bored', 'nervous', 'relief',
       'sassy', 'smug', 'tsundere', 'confident', 'pride', 'flustered', 'love', 'heart'
     ]

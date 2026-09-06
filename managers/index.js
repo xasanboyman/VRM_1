@@ -311,8 +311,8 @@ export async function createVRMChatSystem(canvas, options = {}) {
       const normalizedPersonaPrompt = typeof personaPrompt === 'string' ? personaPrompt.trim() : ''
       const normalizedPreferredLanguage = resolveLanguage(preferredLanguage)
       const compactGlobalAnimationCommand =
-        'FACIAL EXPRESSIONS & LIP-SYNC: Real-time facial expressions, emotions, and mouth lip-sync are generated autonomously by neural Speech2Face and Audio2Face directly from your spoken voice and emotional tone. Express your personality purely through natural speech! ' +
-        'BODY ANIMATIONS & GESTURES: Your body motion is synthesized autonomously by Speech2Motion from your speech, sentiment, and action phrases (e.g. "*Salutes* dramatically!", "Let me wave hello!", "Standing at attention for a salute!"). You can use asterisk stage directions (*salutes*, *waves*, *spins*, *bows*, *shrugs*) or call trigger_gesture(gesture) for explicit actions (salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up).'
+        'FACIAL EXPRESSIONS & LIP-SYNC: Real-time facial expressions, emotions, and mouth lip-sync are generated autonomously by neural Speech2Face and Audio2Face directly from your spoken voice and emotional tone. When crying or sad, real tear drops appear in your eyes! You can call set_expression(expression, duration) for expressions (tears, crying, blush, anger_mark, sweat, star_eyes, happy, sad, angry, surprised, wink, cat_mouth). ' +
+        'BODY ANIMATIONS & GESTURES: Your body motion is synthesized autonomously by Speech2Motion from your speech, sentiment, and action phrases (e.g. "*Salutes* dramatically!", "Let me wave hello!", "Standing at attention for a salute!"). You can use asterisk stage directions (*salutes*, *waves*, *spins*, *bows*, *shrugs*) or call trigger_gesture(gesture) for explicit actions (salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up, cry).'
       const compactDefaultSystemPrompt =
         'You are Rico, a witty and slightly sassy assistant. Be playful, concise, and genuinely helpful. ' +
         'Keep replies short, avoid monologues, and use light roasting only when it fits. ' +
@@ -321,12 +321,32 @@ export async function createVRMChatSystem(canvas, options = {}) {
         'If the user asks to cancel or stop the timer, call cancel_timer. ' +
         'Call set_background_image(prompt) when you or the user want to search and set the background to a real stock photo (e.g., search keywords like "cozy library", "sandy beach", "cyberpunk lab").'
       let pendingTurnGesture = null
+      let standaloneGestureTimer = null
       const triggerAnimation = (animName) => {
         if (!animName) return
         pendingTurnGesture = animName
-        // If model is NOT speaking and no audio is buffering, trigger directly as standalone gesture
+
+        // If an expression with same name exists (like cry/tears, blush, angry), trigger facial expression immediately!
+        const exprCandidate = String(animName).toLowerCase().trim()
+        if (['cry', 'crying', 'tears', 'sad', 'angry', 'mad', 'blush', 'shy', 'happy', 'surprised', 'thinking'].includes(exprCandidate)) {
+          animationManager?.setExpression(exprCandidate, 4.0)
+        }
+
+        if (standaloneGestureTimer) {
+          clearTimeout(standaloneGestureTimer)
+          standaloneGestureTimer = null
+        }
+
+        // If model is NOT speaking and no audio is buffering, wait 250ms to check if speech audio accompanies it.
+        // If speech audio follows, pendingTurnGesture is combined into speech motion.
+        // If no speech audio follows within 250ms, trigger standalone gesture!
         if (pendingModelAudioChunks.length === 0 && !audioManager.isPlaying) {
-          return animationManager?.triggerNamedAnimation(animName)
+          standaloneGestureTimer = setTimeout(() => {
+            if (pendingModelAudioChunks.length === 0 && !audioManager.isPlaying && pendingTurnGesture === animName) {
+              pendingTurnGesture = null
+              animationManager?.triggerNamedAnimation(animName)
+            }
+          }, 250)
         }
       }
       const greetingRegex = /\b(hi|hello|hey|yo|sup|good morning|good afternoon|good evening)\b/i
@@ -344,6 +364,11 @@ export async function createVRMChatSystem(canvas, options = {}) {
           clearTimeout(utteranceDispatchTimer)
           utteranceDispatchTimer = null
         }
+        if (standaloneGestureTimer) {
+          clearTimeout(standaloneGestureTimer)
+          standaloneGestureTimer = null
+        }
+        pendingTurnGesture = null
         pendingModelAudioChunks = []
         pendingModelText = ''
         lastSentenceFlushedText = ''
@@ -379,15 +404,23 @@ export async function createVRMChatSystem(canvas, options = {}) {
           return { face: 'anger_mark', body: 'angry' }
         }
 
-        // 4. Sadness / Sorrow / Crying
+        // 4. Sadness / Sorrow / Crying (Avatar's Special Eye Tears)
         if (
-          /\b(sad|crying|cry|tears|sorrow|grief|heartbroken|depressed|unfortunate|so\s+sorry)\b/i.test(lower) ||
-          /(难过|伤心|哭|悲伤|心碎)/.test(text)
+          /\b(sad|crying|cry|tears?|teardrops?|sniff(?:le|ling)?|weep(?:ing)?|sob(?:bing)?|heartbroken|grief|depressed|unfortunate|so\s+sorry|bawl(?:ing)?)\b/i.test(lower) ||
+          /(难过|伤心|哭|悲伤|心碎|流泪|眼泪|呜呜)/.test(text)
         ) {
           return { face: 'tears', body: 'sad' }
         }
 
-        // 5. Surprised / Shocked / Amazed
+        // 5. Nervous / Sweat / Anxious
+        if (
+          /\b(nervous|sweat(?:ing)?|anxious|worried|panicking|sweatdrop)\b/i.test(lower) ||
+          /(紧张|流汗|冷汗|担心)/.test(text)
+        ) {
+          return { face: 'sweat', body: 'nervous' }
+        }
+
+        // 6. Surprised / Shocked / Amazed
         if (
           /\b(wow|omg|unbelievable|no\s+way|really\??|shocking|shocked|amazed|astonishing|what\?{2,})\b/i.test(lower) ||
           /(吃惊|震惊|哇|不会吧|真的吗)/.test(text)
@@ -395,7 +428,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
           return { face: 'surprised', body: 'surprised' }
         }
 
-        // 6. Thinking / Pondering
+        // 7. Thinking / Pondering
         if (
           /\b(let\s+me\s+think|hmm|pondering|wondering|perhaps|let's\s+see|curious)\b/i.test(lower) ||
           /(思考|让我想想|唔|琢磨)/.test(text)
@@ -403,7 +436,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
           return { face: 'relaxed', body: 'thinking' }
         }
 
-        // 7. Happy / Cheerful / Excited
+        // 8. Happy / Cheerful / Excited
         if (
           /\b(happy|joy|excited|yay|great|awesome|wonderful|celebrate|haha|hehe|glad|delighted|pleased)\b/i.test(lower) ||
           /(开心|太好了|好耶|哈哈|嘻嘻|高兴)/.test(text)
@@ -473,14 +506,14 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
         console.log(`🎬 Speech2Motion Dispatch: "${utteranceText.slice(0, 50)}..." (${audioDuration.toFixed(2)}s, ${totalSamples} samples)`)
 
-        // 1. Detect emotion from spoken utterance text if no explicit emotion is active
+        // 1. Detect emotion from spoken utterance text
+        const detected = detectTextEmotion(utteranceText)
         let activeEmotion = animationManager?.currentEmotion || animationManager?.speech2motion?.currentEmotion || null
-        if (!activeEmotion || activeEmotion === 'idle' || activeEmotion === 'neutral') {
-          const detected = detectTextEmotion(utteranceText)
-          if (detected) {
-            activeEmotion = detected.body
-            animationManager?.setExpression(detected.face, Math.max(audioDuration + 1.2, 4.0))
-          }
+        if (detected) {
+          activeEmotion = detected.body
+          animationManager?.setExpression(detected.face, Math.max(audioDuration + 1.5, 4.0))
+        } else if (!activeEmotion || activeEmotion === 'idle') {
+          activeEmotion = 'neutral'
         }
 
         // 2. Extract word timings and action keywords
@@ -492,11 +525,11 @@ export async function createVRMChatSystem(canvas, options = {}) {
         if (pendingTurnGesture) {
           const gestureMap = {
             salute: '敬礼',
-            wave: '招手',
+            wave: '打招呼',
             dance: '元气体操',
             spin: '转圈',
             heart_fingers: '比心',
-            shrug: '耸肩',
+            shrug: '摊手',
             bow: '鞠躬',
             clap: '鼓掌',
             hands_on_hips: '叉腰',
@@ -507,11 +540,13 @@ export async function createVRMChatSystem(canvas, options = {}) {
             shake_head: '摇头',
             shy: '害羞',
             cry: '哭泣',
+            crying: '哭泣',
+            tears: '哭泣',
             angry: '生气',
             happy: '开心',
           }
           const lowerG = String(pendingTurnGesture).toLowerCase().trim().replace(/[\s-]+/g, '_')
-          const mappedKw = gestureMap[lowerG] || pendingTurnGesture
+          const mappedKw = animationManager?.speech2motion?.gestureKeywordMap?.[lowerG] || gestureMap[lowerG] || pendingTurnGesture
           if (!timingInfo.motionKeywords) timingInfo.motionKeywords = []
           timingInfo.motionKeywords.unshift([0, mappedKw])
           pendingTurnGesture = null
@@ -534,17 +569,9 @@ export async function createVRMChatSystem(canvas, options = {}) {
             })
           : Promise.resolve(null)
 
-        // 4. Sequence sequentially behind any playing utterance
+        // 4. Sequence sequentially behind any playing utterance (immediately crossfading without blocking audio)
         activeUtterancePromise = activeUtterancePromise.then(async () => {
           audioManager.setUserSpeakingState(false)
-
-          // If an action gesture (like 360 spin, dance, wave) is currently performing,
-          // hold back spoken sentences until the physical motion completes so it won't add up or become messy!
-          const s2m = animationManager?.speech2motion
-          if (s2m && s2m.isActionGestureActive) {
-            console.log('⏳ Speech2Motion: Holding back spoken utterance until action gesture finishes...')
-            await s2m.waitForCurrentActionGesture()
-          }
 
           const motionTrack = await motionTrackPromise
           if (motionTrack && isAction) {

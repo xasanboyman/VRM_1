@@ -866,31 +866,23 @@ export class Speech2MotionManager {
     const audioMgr = this.audioManager || (typeof window !== 'undefined' ? window.vrmAudioManager : null)
     const nowAudioTime = (audioMgr && audioMgr.audioCtx) ? audioMgr.audioCtx.currentTime : 0
 
-    // If an action gesture (like spin_360, wave, bow) is actively playing and incoming is not an action,
-    // enqueue it so the action gesture completes smoothly first
-    const hasActiveAction = this.isActionGestureActive && this.currentTrack?.isActionGesture
-    if (hasActiveAction && !isAction && this.playbackTime < (this.currentTrack.duration - 0.4)) {
-      console.log('⏳ Speech2Motion: Preserving active action gesture; queuing incoming speech track')
-      this.speechTrackQueue.push(item)
-      this.speechTrackQueue.sort((a, b) => a.startTime - b.startTime)
-      return
-    }
+    // Check if an earlier speech sentence is still actively speaking:
+    // (i.e. audio clock is running and current speech sentence audio hasn't completed yet)
+    const isEarlierSpeechAudioActive = this.isSpeechActive && this.currentTrack && !this.currentTrack.is_idle &&
+      (nowAudioTime > 0) &&
+      (nowAudioTime < (this.speechStartTime + this.speechAudioDuration - 0.15)) &&
+      (nowAudioTime < (speechStartTime - 0.25))
 
-    // Only activate immediately if:
-    // 1) No speech track is active (e.g. idle or first utterance), OR
-    // 2) Current track is not speaking, AND nowAudioTime is at or close to speechStartTime (within 350ms)
-    const hasActiveSpeechTrack = this.isSpeechActive && this.currentTrack && !this.currentTrack.is_idle
-    const isTimeToStart = (nowAudioTime <= 0) || (nowAudioTime >= speechStartTime - 0.35)
-
-    if (!hasActiveSpeechTrack && isTimeToStart) {
+    if (!isEarlierSpeechAudioActive) {
+      // Activate immediately with smooth Hermite slerp blending from current pose
       this._activateSpeechTrack(item)
       return
     }
 
-    // Otherwise, enqueue onto speechTrackQueue so it chains seamlessly at the right time
+    // Otherwise, chain onto speechTrackQueue so it seamlessly transitions when current sentence finishes
     this.speechTrackQueue.push(item)
     this.speechTrackQueue.sort((a, b) => a.startTime - b.startTime)
-    console.log(`🎬 Speech2Motion: Enqueued speech track (${this.speechTrackQueue.length} in queue, starts at ${speechStartTime.toFixed(2)}s)`)
+    console.log(`🎬 Speech2Motion: Enqueued speech track (${this.speechTrackQueue.length} in queue, scheduled for ${speechStartTime.toFixed(2)}s)`)
   }
 
   /**
