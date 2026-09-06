@@ -427,6 +427,24 @@ export class Speech2MotionManager {
       pointing: 899,
       '指': 899,
       '指向': 899,
+      acknowledging: 900,
+      acknowledge: 900,
+      '领会': 900,
+      approval: 901,
+      approve: 901,
+      '赞同': 901,
+      excitement: 902,
+      excited: 902,
+      '激动': 902,
+      '兴奋': 902,
+      joy: 903,
+      happy: 903,
+      '开心': 903,
+      '快乐': 903,
+      laughing: 904,
+      laugh: 904,
+      '大笑': 904,
+      '哈哈': 904,
     }
   }
 
@@ -964,13 +982,13 @@ export class Speech2MotionManager {
     if (!this.enabled) return null
     const lower = (gestureName || '').toLowerCase().trim().replace(/[\s-]+/g, '_')
 
-    // If it maps to a body emotion, route directly to triggerEmotion
-    if (this.emotionAliasMap[lower] && this.emotionAliasMap[lower] !== 'idle') {
-      return this.triggerEmotion(lower)
-    }
-
     const keyword = this.gestureKeywordMap[lower] || lower
     const recordId = this.gestureRecordMap?.[lower] || this.gestureRecordMap?.[keyword] || null
+
+    // If it maps to a body emotion and has no explicit mocap gesture record, route to triggerEmotion
+    if (!recordId && this.emotionAliasMap[lower] && this.emotionAliasMap[lower] !== 'idle') {
+      return this.triggerEmotion(lower)
+    }
 
     // Dedup guard: If this gesture was triggered within the last 4 seconds and is active, do not re-trigger
     const lastTrigger = this.recentActionGestures.get(keyword) || 0
