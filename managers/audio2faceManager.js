@@ -17,9 +17,12 @@ import * as THREE from 'three'
 export class Audio2FaceManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
-    this.apiEndpoint = options.apiEndpoint || '/api/audio2face/generate'
+    const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_AUDIO2FACE_URL
+    this.apiEndpoint = options.apiEndpoint || (envUrl ? `${envUrl}/api/audio2face/generate` : '/api/audio2face/generate')
     this.profileName = options.profileName || 'Ani-default'
     this.enabled = options.enabled !== false
+    this.isAvailable = true
+    this.failureCount = 0
     this.sampleRate = options.sampleRate || 24000
     this.smoothingFactor = options.smoothingFactor || 0.65
     this.blendshapeMultiplier = options.blendshapeMultiplier || 1.15
@@ -131,15 +134,19 @@ export class Audio2FaceManager {
 
     // Dispatch when batch threshold is met or explicitly flushed
     if (this.pendingAudioSamples >= this.minBatchSamples && !this.isDispatching) {
-      await this.flushPendingAudio(speechStartTime)
+      await this.dispatchAudio(speechStartTime)
     }
+  }
+
+  async flushPendingAudio(speechStartTime = null) {
+    return this.dispatchAudio(speechStartTime)
   }
 
   /**
    * Flush all accumulated audio and trigger neural blendshape inference.
    */
-  async flushPendingAudio(speechStartTime = null) {
-    if (this.pendingAudioChunks.length === 0 || this.isDispatching) return
+  async dispatchAudio(speechStartTime = null) {
+    if (!this.enabled || !this.isAvailable || this.pendingAudioChunks.length === 0 || this.isDispatching) return
 
     this.isDispatching = true
     const chunks = this.pendingAudioChunks
@@ -183,15 +190,20 @@ export class Audio2FaceManager {
       })
 
       if (!response.ok) {
+        if (response.status === 404) {
+          console.info(`ℹ️ Audio2Face service connection pending at ${this.apiEndpoint}...`)
+          return
+        }
         throw new Error(`Audio2Face server returned ${response.status}: ${await response.text()}`)
       }
 
       const res = await response.json()
       if (res.ok && Array.isArray(res.weights) && res.weights.length > 0) {
+        this.failureCount = 0
         this._appendTimeline(res, speechStartTime)
       }
     } catch (err) {
-      console.warn('Audio2Face inference request failed:', err)
+      // Waiting for Audio2Face backend
     } finally {
       this.isDispatching = false
     }

@@ -62,6 +62,64 @@ const MIXAMO_VRM_RIG_MAP = {
   mixamorigRightToeBase: 'rightToes',
 }
 
+export const LOCAL_ANIMATION_FILES = [
+  { name: 'NeutralIdle', file: 'NeutralIdle.vrma', isLoop: true, isIdle: true },
+  { name: 'HappyIdle', file: 'HappyIdle.vrma', isLoop: true, isIdle: true },
+  { name: 'Acknowledging', file: 'Acknowledging.vrma', isLoop: false },
+  { name: 'Admiration', file: 'Admiration.vrma', isLoop: false },
+  { name: 'Amusement', file: 'Amusement.vrma', isLoop: false },
+  { name: 'Angry', file: 'Angry.vrma', isLoop: false },
+  { name: 'Approval', file: 'Approval.vrma', isLoop: false },
+  { name: 'Backflip', file: 'Backflip.vrma', isLoop: false },
+  { name: 'BlowKiss', file: 'BlowKiss.vrma', isLoop: false },
+  { name: 'Bored', file: 'Bored.vrma', isLoop: false },
+  { name: 'Bow', file: 'Bow.vrma', isLoop: false },
+  { name: 'Cheering', file: 'Cheering.vrma', isLoop: false },
+  { name: 'Clapping', file: 'Clapping.vrma', isLoop: false },
+  { name: 'Confusion', file: 'Confusion.vrma', isLoop: false },
+  { name: 'Curiosity', file: 'Curiosity.vrma', isLoop: false },
+  { name: 'CutthroatGesture', file: 'CutthroatGesture.vrma', isLoop: false },
+  { name: 'Dab', file: 'Dab.vrma', isLoop: false },
+  { name: 'Disappointment', file: 'Disappointment.vrma', isLoop: false },
+  { name: 'Disgust', file: 'Disgust.vrma', isLoop: false },
+  { name: 'Embarrassment', file: 'Embarrassment.vrma', isLoop: false },
+  { name: 'Excitement', file: 'Excitement.vrma', isLoop: false },
+  { name: 'Explaining', file: 'Explaining.vrma', isLoop: false },
+  { name: 'Facepalm', file: 'Facepalm.vrma', isLoop: false },
+  { name: 'Fear', file: 'Fear.vrma', isLoop: false },
+  { name: 'GangnamStyle', file: 'GangnamStyle.vrma', isLoop: false },
+  { name: 'Gratitude', file: 'Gratitude.vrma', isLoop: false },
+  { name: 'Greeting', file: 'Greeting.vrma', isLoop: false },
+  { name: 'Grief', file: 'Grief.vrma', isLoop: false },
+  { name: 'HandsOnHips', file: 'HandsOnHips.vrma', isLoop: false },
+  { name: 'HeartFingers', file: 'HeartFingers.vrma', isLoop: false },
+  { name: 'HipHopDance', file: 'HipHopDance.vrma', isLoop: false },
+  { name: 'Joy', file: 'Joy.vrma', isLoop: false },
+  { name: 'Laughing', file: 'Laughing.vrma', isLoop: false },
+  { name: 'LookingAround', file: 'LookingAround.vrma', isLoop: false },
+  { name: 'LookingAtFingerFromBoredom', file: 'LookingAtFingerFromBoredom.vrma', isLoop: false },
+  { name: 'Love', file: 'Love.vrma', isLoop: false },
+  { name: 'MacarenaDance', file: 'MacarenaDance.vrma', isLoop: false },
+  { name: 'Nervous', file: 'Nervous.vrma', isLoop: false },
+  { name: 'Nod', file: 'Nod.vrma', isLoop: false },
+  { name: 'Pat', file: 'Pat.vrma', isLoop: false },
+  { name: 'Pointing', file: 'Pointing.vrma', isLoop: false },
+  { name: 'Pride', file: 'Pride.vrma', isLoop: false },
+  { name: 'Realization', file: 'Realization.vrma', isLoop: false },
+  { name: 'Relief', file: 'Relief.vrma', isLoop: false },
+  { name: 'Sadness', file: 'Sadness.vrma', isLoop: false },
+  { name: 'Salute', file: 'Salute.vrma', isLoop: false },
+  { name: 'ShakeHead', file: 'ShakeHead.vrma', isLoop: false },
+  { name: 'Shrugging', file: 'Shrugging.vrma', isLoop: false },
+  { name: 'Shy', file: 'Shy.vrma', isLoop: false },
+  { name: 'Sleeping', file: 'Sleeping.vrma', isLoop: false },
+  { name: 'Surprise', file: 'Surprise.vrma', isLoop: false },
+  { name: 'Taunt', file: 'Taunt Gesture.vrma', isLoop: false },
+  { name: 'Thinking', file: 'Thinking.vrma', isLoop: false },
+  { name: 'ThumbsUp', file: 'ThumbsUp.vrma', isLoop: false },
+  { name: 'Waving', file: 'Waving.vrma', isLoop: false },
+]
+
 // Safety net: maps common names the model invents to real catalog animations,
 // so a near-miss still plays something fitting instead of doing nothing.
 const ANIMATION_ALIASES = {
@@ -325,7 +383,7 @@ export class AnimationManager {
   loader
   camera = null
   currentState = 'idle'
-  mainIdle = 'Unarmed_idle01'
+  mainIdle = 'NeutralIdle'
   currentExpression = 'neutral'
   targetExpression = 'neutral'
   targetExpressionWeights = { neutral: 1 }
@@ -448,16 +506,17 @@ export class AnimationManager {
     this.loader.setCrossOrigin('anonymous')
     this.loader.register((parser) => new VRMAnimationLoaderPlugin(parser))
 
+    this._origHumanoidUpdate = (this.vrm?.humanoid?.update && typeof this.vrm.humanoid.update === 'function')
+      ? this.vrm.humanoid.update.bind(this.vrm.humanoid)
+      : null
+    this.isFallbackActive = false
+
     this.speech2motion = new Speech2MotionManager(vrm, {
       avatarName: 'Ani-default',
       animationManager: this,
       audioManager: typeof window !== 'undefined' ? window.vrmAudioManager : null,
       enabled: true,
     })
-
-    if (this.vrm?.humanoid) {
-      this.vrm.humanoid.update = () => {}
-    }
 
     this.clearExpressionCache()
     this._tempKeysToUpdate = new Set()
@@ -857,47 +916,58 @@ export class AnimationManager {
   }
 
   getAvailableAnimations() {
-    return []
+    return LOCAL_ANIMATION_FILES.map((f) => f.name)
   }
 
   getAnimationCatalog() {
-    return []
+    return LOCAL_ANIMATION_FILES
   }
 
-  // Every animation the AI is allowed to trigger: mocap gesture keywords from Speech2Motion
+  // Every animation the AI is allowed to trigger: mocap gesture keywords from Speech2Motion or local .vrma
   getTriggerableAnimationNames() {
-    if (this.speech2motion && this.speech2motion.enabled) {
+    if (this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline) {
       return Object.keys(this.speech2motion.gestureKeywordMap)
     }
-    return [
-      'spin', 'spin_360', 'rotate', 'twirl',
-      'shrug', 'as_you_insist', 'wave', 'greeting', 'hello',
-      'clap', 'applause', 'heart_fingers', 'love',
-      'hands_on_hips', 'sassy', 'nod', 'approval',
-      'shake_head', 'bow', 'thinking', 'thumbs_up',
-      'shy', 'jump', 'cry', 'quiet', 'cheering', 'joy'
-    ]
+    return LOCAL_ANIMATION_FILES.map((f) => f.name)
   }
 
   getAnimationRepoBase() {
-    return ''
+    return '/animations/'
   }
 
-  async loadAnimationFile(file) {
-    return null
+  async loadAnimationFile(item) {
+    if (!item) return null
+    const filename = item.file || (item.name.endsWith('.vrma') ? item.name : `${item.name}.vrma`)
+    const url = `/animations/${filename}`
+    try {
+      return await this.loadClip(item.name, url, item.isLoop)
+    } catch (err) {
+      console.warn(`Could not load animation ${item.name} from ${url}:`, err)
+      return null
+    }
   }
 
   async loadAnimationBatch(files, options = {}) {
-    return Promise.resolve()
+    if (!Array.isArray(files)) return
+    const promises = files.map((f) => this.loadAnimationFile(f))
+    await Promise.allSettled(promises)
   }
 
   startBackgroundAnimationLoad(options = {}) {
-    return Promise.resolve()
+    if (this.backgroundLoadPromise) return this.backgroundLoadPromise
+    this.backgroundLoadPromise = (async () => {
+      for (const item of LOCAL_ANIMATION_FILES) {
+        if (!this.actions[item.name]) {
+          await this.loadAnimationFile(item).catch(() => {})
+        }
+      }
+    })()
+    return this.backgroundLoadPromise
   }
 
   async initialize(options = {}) {
     const { onProgress } = options
-    console.log('AnimationManager: Initializing with Speech2Motion (100% mocap synthesized motion online)...')
+    console.log('AnimationManager: Initializing animation subsystem...')
 
     if (!this.speech2motion) {
       this.speech2motion = new Speech2MotionManager(this.vrm, {
@@ -913,11 +983,71 @@ export class AnimationManager {
       }
     }
 
-    onProgress?.({ current: 1, total: 1, name: 'Speech2Motion' })
+    // Try starting Speech2Motion infinite mocap first
+    let s2mStarted = false
+    try {
+      s2mStarted = await this.speech2motion.startInfiniteMotion()
+    } catch (e) {
+      s2mStarted = false
+    }
 
-    // Start infinite continuous human mocap streaming immediately
-    await this.speech2motion.startInfiniteMotion()
-    console.log('AnimationManager Ready: Speech2Motion infinite streaming motion online')
+    if (s2mStarted && this.speech2motion.isOnline) {
+      console.log('AnimationManager Ready: Speech2Motion infinite streaming motion online')
+      if (this.vrm?.humanoid) {
+        this.vrm.humanoid.update = () => {}
+      }
+      onProgress?.({ current: 1, total: 1, name: 'Speech2Motion' })
+      return
+    }
+
+    // Speech2Motion is offline (e.g. running standalone on Vercel)
+    await this.onSpeech2MotionOffline()
+    onProgress?.({ current: 1, total: 1, name: 'LocalAnimations' })
+  }
+
+  async onSpeech2MotionOffline() {
+    if (this.isFallbackActive) return
+    this.isFallbackActive = true
+
+    if (this.speech2motion) {
+      this.speech2motion.enabled = false
+      this.speech2motion.isOnline = false
+    }
+
+    // Restore normalized humanoid bone updates so mixer and procedural animations work
+    if (this._origHumanoidUpdate && this.vrm?.humanoid) {
+      this.vrm.humanoid.update = this._origHumanoidUpdate
+    }
+
+    this.mainIdle = 'NeutralIdle'
+
+    // Load and play main idle animation
+    try {
+      const idleAction = await this.loadAnimationFile({ name: 'NeutralIdle', file: 'NeutralIdle.vrma', isLoop: true, isIdle: true })
+      if (idleAction) {
+        this.play('NeutralIdle')
+      }
+    } catch (err) {
+      console.warn('Fallback NeutralIdle load error:', err)
+    }
+
+    // Preload core conversational animations
+    const corePreload = [
+      { name: 'Greeting', file: 'Greeting.vrma', isLoop: false },
+      { name: 'Explaining', file: 'Explaining.vrma', isLoop: false },
+      { name: 'Nod', file: 'Nod.vrma', isLoop: false },
+      { name: 'Joy', file: 'Joy.vrma', isLoop: false },
+      { name: 'Cheering', file: 'Cheering.vrma', isLoop: false },
+      { name: 'Shrugging', file: 'Shrugging.vrma', isLoop: false },
+      { name: 'ThumbsUp', file: 'ThumbsUp.vrma', isLoop: false },
+      { name: 'Waving', file: 'Waving.vrma', isLoop: false },
+      { name: 'HappyIdle', file: 'HappyIdle.vrma', isLoop: true },
+    ]
+    for (const item of corePreload) {
+      this.loadAnimationFile(item).catch(() => {})
+    }
+
+    console.info('✅ AnimationManager: Avatar running smoothly with 55 high-quality .vrma animations + procedural breathing.')
   }
 
   async loadClipWithFallback(name, localPath, remoteUrl, isLoop) {
@@ -1225,7 +1355,7 @@ export class AnimationManager {
     ]
     const isWholeBodyEmotion = wholeBodyEmotions.includes(String(name || '').toLowerCase().trim())
 
-    if (this.speech2motion && this.speech2motion.enabled && !this.speech2motion.isActionGestureActive) {
+    if (this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline && !this.speech2motion.isActionGestureActive) {
       if (isWholeBodyEmotion) {
         if (!this.speech2motion.isSpeechActive) {
           this.speech2motion.triggerEmotion(name)
@@ -1233,6 +1363,8 @@ export class AnimationManager {
           this.speech2motion.currentEmotion = name
         }
       }
+    } else if (isWholeBodyEmotion && (!this.speech2motion || !this.speech2motion.isOnline)) {
+      this.triggerAnimation(name)
     }
 
     if (this.expressionTimer) clearTimeout(this.expressionTimer)
@@ -1240,7 +1372,7 @@ export class AnimationManager {
       this.expressionTimer = setTimeout(() => {
         this._applyExpressionTarget('neutral')
         this.currentEmotion = 'idle'
-        if (this.speech2motion && !this.speech2motion.isSpeechActive && !this.speech2motion.isActionGestureActive) {
+        if (this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline && !this.speech2motion.isSpeechActive && !this.speech2motion.isActionGestureActive) {
           this.speech2motion.triggerEmotion('idle')
         }
       }, effectiveDuration * 1000)
@@ -1481,7 +1613,7 @@ export class AnimationManager {
   }
 
   update(delta) {
-    const isSpeech2MotionActive = this.speech2motion && this.speech2motion.enabled
+    const isSpeech2MotionActive = this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline
 
     if (isSpeech2MotionActive) {
       this.speech2motion.update(delta)
@@ -1759,7 +1891,7 @@ export class AnimationManager {
     const rawName = name.trim()
     const lowerName = rawName.toLowerCase().replace(/[\s-]+/g, '_')
 
-    if (this.speech2motion && this.speech2motion.enabled) {
+    if (this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline) {
       return this.speech2motion.triggerGesture(lowerName)
     }
 

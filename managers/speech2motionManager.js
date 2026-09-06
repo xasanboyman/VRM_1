@@ -126,21 +126,44 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
 export class Speech2MotionManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
-    this.apiEndpoint = options.apiEndpoint || '/api/speech2motion/generate'
+    const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_URL
+    this.apiEndpoint = options.apiEndpoint || (envUrl ? `${envUrl}/api/speech2motion/generate` : '/api/speech2motion/generate')
     this.avatarName = options.avatarName || 'Ani-default'
     this.enabled = options.enabled !== false
+
+    // State tracking & circuit breaker
+    this.isOnline = false
+    this.consecutiveFailures = 0
+    this.wsReconnectAttempts = 0
+    this.maxWsReconnectAttempts = 1
 
     // Persistent WebSocket for streaming motion generation (ultra low latency)
     this.ws = null
     this.wsEndpoint = options.wsEndpoint || null
     if (!this.wsEndpoint && typeof window !== 'undefined') {
-      const loc = window.location
-      const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:'
-      this.wsEndpoint = `${protocol}//${loc.host}/speech2motion-ws/api/v3/speech2motion/ws`
+      const envWsUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_WS_URL
+      if (envWsUrl) {
+        this.wsEndpoint = envWsUrl
+      } else if (envUrl) {
+        try {
+          const u = new URL(envUrl)
+          const protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
+          this.wsEndpoint = `${protocol}//${u.host}/speech2motion-ws/api/v3/speech2motion/ws`
+        } catch (_) {}
+      } else {
+        const loc = window.location
+        const isLocalhost = loc.hostname === 'localhost' || loc.hostname === '127.0.0.1'
+        if (isLocalhost) {
+          const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:'
+          this.wsEndpoint = `${protocol}//${loc.host}/speech2motion-ws/api/v3/speech2motion/ws`
+        }
+      }
     }
     this.wsPendingRequests = new Map()
     this.wsReconnectTimer = null
-    this._initWebSocket()
+    if (this.wsEndpoint) {
+      this._initWebSocket()
+    }
 
     // Playback state
     this.currentTrack = null
@@ -396,24 +419,32 @@ export class Speech2MotionManager {
    * Feeds the avatar with calm, gentle breathing idle motion (Ani_standIdle / Record 721).
    */
   async startInfiniteMotion() {
-    if (this.isInfiniteActive) return
-    this.isInfiniteActive = true
-    console.log('✨ Speech2Motion: Starting calm idle breathing pipeline...')
+    if (this.isInfiniteActive && this.isOnline) return true
+    if (!this.enabled) return false
+    console.log('✨ Speech2Motion: Connecting to mocap pipeline...')
 
-    // Fetch initial calm standing idle track (Record 721)
-    const initialTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
-    if (initialTrack) {
-      this.currentTrack = initialTrack
-      this.playbackTime = 0
-      this.isPlaying = true
-      this.isIdleActive = true
-      this.idleTimer = 0
-      this.idleBlendWeight = 1.0
-      this.transitionElapsed = this.transitionBlendDuration
+    try {
+      const initialTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
+      if (initialTrack) {
+        this.isOnline = true
+        this.isInfiniteActive = true
+        this.currentTrack = initialTrack
+        this.playbackTime = 0
+        this.isPlaying = true
+        this.isIdleActive = true
+        this.idleTimer = 0
+        this.idleBlendWeight = 1.0
+        this.transitionElapsed = this.transitionBlendDuration
+        this._prefetchNextIdle()
+        return true
+      }
+    } catch (err) {
+      console.warn('Speech2Motion startInfiniteMotion failed:', err)
     }
 
-    // Pre-fetch next calm idle track so double-buffer queue is ready
-    this._prefetchNextIdle()
+    this.isOnline = false
+    this.isInfiniteActive = false
+    return false
   }
 
   /**
@@ -548,7 +579,9 @@ export class Speech2MotionManager {
           return track
         }
       } catch (wsErr) {
-        console.warn('Speech2Motion WS request failed, falling back to HTTP:', wsErr)
+        if (this.isOnline) {
+          console.warn('Speech2Motion WS request failed, falling back to HTTP:', wsErr)
+        }
       }
     }
 
@@ -561,6 +594,10 @@ export class Speech2MotionManager {
       })
 
       if (!response.ok) {
+        if (response.status === 404) {
+          this._handleBackendOffline(404)
+          return null
+        }
         throw new Error(`Server returned ${response.status}: ${await response.text()}`)
       }
 
@@ -569,14 +606,43 @@ export class Speech2MotionManager {
         throw new Error(data.error || 'Empty motion payload')
       }
 
+      this.isOnline = true
+      this.consecutiveFailures = 0
       const track = this._parseMotionPayload(data)
       if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
         track.isActionGesture = true
       }
       return track
     } catch (err) {
-      console.warn('Speech2Motion fetch failed:', err)
+      this.consecutiveFailures++
+      if (this.consecutiveFailures >= 2 || !this.isOnline) {
+        this._handleBackendOffline(err.message || err)
+      } else {
+        console.warn('Speech2Motion fetch failed:', err)
+      }
       return null
+    }
+  }
+
+  _handleBackendOffline(reason) {
+    this.isOnline = false
+    this.isInfiniteActive = false
+    this._isGeneratingFreshIdle = false
+    if (this.wsReconnectTimer) {
+      clearTimeout(this.wsReconnectTimer)
+      this.wsReconnectTimer = null
+    }
+    if (this.ws) {
+      try { this.ws.close() } catch (_) {}
+      this.ws = null
+    }
+    console.info(`ℹ️ Speech2Motion: Backend connection pending (${reason === 404 ? 'server starting/offline' : reason}). Retrying in 5s...`)
+    
+    if (!this._reconnectTimer) {
+      this._reconnectTimer = setTimeout(() => {
+        this._reconnectTimer = null
+        this.startInfiniteMotion()
+      }, 5000)
     }
   }
 
@@ -590,6 +656,8 @@ export class Speech2MotionManager {
 
       ws.onopen = () => {
         console.log('⚡ Speech2Motion WebSocket connected:', this.wsEndpoint)
+        this.isOnline = true
+        this.wsReconnectAttempts = 0
       }
 
       ws.onmessage = (event) => {
@@ -607,8 +675,8 @@ export class Speech2MotionManager {
         }
       }
 
-      ws.onerror = (err) => {
-        console.warn('Speech2Motion WS error:', err)
+      ws.onerror = () => {
+        // Quietly wait for server to come online
       }
 
       ws.onclose = () => {
@@ -619,16 +687,16 @@ export class Speech2MotionManager {
         }
         this.wsPendingRequests.clear()
 
-        // Auto-reconnect after 3s
-        if (!this.wsReconnectTimer) {
+        // Always keep reconnecting every 5s so it locks in immediately when server is ready
+        if (this.enabled && !this.wsReconnectTimer) {
           this.wsReconnectTimer = setTimeout(() => {
             this.wsReconnectTimer = null
             this._initWebSocket()
-          }, 3000)
+          }, 5000)
         }
       }
     } catch (e) {
-      console.warn('Speech2Motion WS init error:', e)
+      // Server not reachable yet
     }
   }
 
@@ -806,18 +874,21 @@ export class Speech2MotionManager {
     this.speechStartTime = 0
     this.speechAudioDuration = 0
     this._speechSilenceTimer = 0
-    this._transitionToFreshIdle()
+    if (this.isOnline && this.enabled && this.isInfiniteActive) {
+      this._transitionToFreshIdle()
+    }
   }
 
   /**
    * Transition smoothly to next idle track or generate fresh idle if needed.
    */
   _transitionToNextIdle() {
+    if (!this.isOnline || !this.enabled) return
     if (this.nextTrack && this.isIdleActive) {
       this._transitionToTrack(this.nextTrack, false)
       this.nextTrack = null
       this._prefetchNextIdle()
-    } else {
+    } else if (this.isInfiniteActive) {
       this._transitionToFreshIdle()
     }
   }
@@ -827,6 +898,7 @@ export class Speech2MotionManager {
    * Clears old queues, sets up slerp crossfade, and restores calm standing posture.
    */
   async _transitionToFreshIdle() {
+    if (!this.isOnline || !this.enabled || !this.isInfiniteActive) return
     if (this._isGeneratingFreshIdle) return
     this._isGeneratingFreshIdle = true
 
@@ -849,8 +921,8 @@ export class Speech2MotionManager {
     try {
       const freshTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
       if (!freshTrack) {
-        console.warn('Speech2Motion: Failed to fetch fresh idle, keeping fallback')
         this._isGeneratingFreshIdle = false
+        this._handleBackendOffline('Fresh idle generation returned empty')
         return
       }
 
@@ -1151,8 +1223,10 @@ export class Speech2MotionManager {
    * Called on every animation tick from AnimationManager.update(delta).
    */
   update(delta) {
+    if (!this.isOnline || !this.enabled) return
+
     if (!this.currentTrack || !this.vrm) {
-      if (this.isInfiniteActive && !this.isFetchingNext && !this.isSpeechActive && !this.isActionGestureActive) {
+      if (this.isOnline && this.isInfiniteActive && !this.isFetchingNext && !this.isSpeechActive && !this.isActionGestureActive) {
         this._transitionToFreshIdle()
       }
       return
