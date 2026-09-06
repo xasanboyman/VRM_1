@@ -74,6 +74,12 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
     else if (/jump|bounce/i.test(stage)) mapped = '开心蹦跳'
     else if (/think|ponder/i.test(stage)) mapped = '思考'
     else if (/hands?\s*up|raise\s*(?:your\s+|my\s+)?hands?/i.test(stage)) mapped = '举手'
+    else if (/peace|v_sign|victory|two_fingers|比v|剪刀手/i.test(stage)) mapped = '比V'
+    else if (/ok/i.test(stage)) mapped = 'OK手势'
+    else if (/bunny|rabbit/i.test(stage)) mapped = '兔耳朵手势'
+    else if (/gun|pew/i.test(stage)) mapped = '开枪'
+    else if (/cross\s*arms|fold\s*arms/i.test(stage)) mapped = '双手抱胸'
+    else if (/stretch/i.test(stage)) mapped = '伸懒腰'
 
     if (mapped) {
       motionKeywords.push([astMatch.index, mapped])
@@ -83,7 +89,7 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
 
   // 2. Keyword pattern matching for expressive human mocap motions and full-body emotions
   const keywordPatterns = [
-    { regex: /\b(spin(?:s|ning)?(?:\s*360|\s*degrees?)?|sping(?:\s*360)?|turn\s*around|rotate[sd]?|twirl(?:s|ed|ing)?)\b/gi, keyword: '转圈' },
+    { regex: /\b(spin(?:s|ning)?(?:\s*360|\s*degrees?)?|sping(?:\s*360)?|turn\s*around|whole\s*turn|full\s*turn|complete\s*turn|rotate[sd]?|twirl(?:s|ed|ing)?)\b/gi, keyword: '转圈' },
     { regex: /\b(as\s+you\s+insist|all\s+right\s+all\s+right|if\s+you\s+insist|shrug(?:s|ged|ging)?)\b/gi, keyword: '摊手' },
     { regex: /\b(wave[sd]?|waving|greeting[s]?|hello|bye|goodbye|hi)\b/gi, keyword: '打招呼' },
     { regex: /\b(clap(?:s|ped|ping)?|applause)\b/gi, keyword: '鼓掌' },
@@ -118,6 +124,12 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
     { regex: /\b(dance[sd]?|dancing|gymnastics)\b/gi, keyword: '元气体操' },
     { regex: /\b(quiet|hush|shh)\b/gi, keyword: '安静手势' },
     { regex: /\b(hands?\s*up|raise\s*(?:your\s+|my\s+)?hands?|put\s+your\s+hands\s+up|surrender)\b/gi, keyword: '举手' },
+    { regex: /\b(peace(?:\s*sign)?|v\s*sign|victory(?:\s*sign)?|two\s*fingers|比[vV]|剪刀手)\b/gi, keyword: '比V' },
+    { regex: /\b(ok(?:\s*sign)?|okay(?:\s*sign)?|ok手势)\b/gi, keyword: 'OK手势' },
+    { regex: /\b(bunny\s*ears?|rabbit\s*ears?|兔耳朵(?:手势)?)\b/gi, keyword: '兔耳朵手势' },
+    { regex: /\b(finger\s*gun|pew\s*pew|开枪)\b/gi, keyword: '开枪' },
+    { regex: /\b(cross(?:ed)?\s*arms?|fold(?:ed)?\s*arms?|双手抱胸)\b/gi, keyword: '双手抱胸' },
+    { regex: /\b(stretch(?:es|ing)?|伸懒腰)\b/gi, keyword: '伸懒腰' },
   ]
 
   for (const kp of keywordPatterns) {
@@ -205,17 +217,17 @@ export class Speech2MotionManager {
     this.transitionElapsed = 1.0 // start fully settled
 
     // Calibrated natural pacing:
-    // - Idle: 0.72x for relaxed, gentle breathing (matches VTuber reference)
-    // - Gestures/Emotions: 0.80x for smooth, graceful human mocap
-    this.playbackSpeed = options.playbackSpeed || 0.80
-    this.idlePlaybackSpeed = options.idlePlaybackSpeed || 0.72
+    // - Idle: 0.75x for relaxed, gentle breathing (matches VTuber reference)
+    // - Gestures/Emotions: 0.85x for smooth, graceful human mocap
+    this.playbackSpeed = options.playbackSpeed || 0.85
+    this.idlePlaybackSpeed = options.idlePlaybackSpeed || 0.75
 
     // Audio-Adaptive Timing & Pacing:
-    // Dynamically adjust animation playback speed (slow or fast) to naturally match
-    // the speech audio duration without artificial looping, repeating, or cut-offs.
+    // Dynamically adjust animation playback speed to naturally match speech audio
+    // without artificial rushing, repeating, or cut-offs.
     this.adaptiveSpeedEnabled = options.adaptiveSpeedEnabled !== false
-    this.minSpeechSpeed = options.minSpeechSpeed || 0.40 // Calmed lower bound for longer speech (mostly slowing)
-    this.maxSpeechSpeed = options.maxSpeechSpeed || 1.15 // Gentle upper bound (can faster but not that much)
+    this.minSpeechSpeed = options.minSpeechSpeed || 0.50 // Calmed lower bound for longer speech
+    this.maxSpeechSpeed = Math.min(1.00, options.maxSpeechSpeed || 1.00) // Strictly capped to 1.00x so human mocap is never rushed!
     this.adaptivePlaybackSpeed = this.playbackSpeed
     this.motionScaledDuration = 0
     this.isDurationMatched = false
@@ -398,6 +410,21 @@ export class Speech2MotionManager {
       raise_hands: '举手',
       raise_hand: '举手',
       surrender: '举手',
+      peace: '比V',
+      peace_sign: '比V',
+      v_sign: '比V',
+      victory: '比V',
+      victory_sign: '比V',
+      two_fingers: '比V',
+      比v: '比V',
+      剪刀手: '比V',
+      ok: 'OK手势',
+      ok_sign: 'OK手势',
+      bunny_ears: '兔耳朵手势',
+      rabbit_ears: '兔耳朵手势',
+      finger_gun: '开枪',
+      cross_arms: '双手抱胸',
+      stretch: '伸懒腰',
     }
   }
 
@@ -583,6 +610,14 @@ export class Speech2MotionManager {
       '打瞌睡': 4.0,
       '无聊': 4.0,
       '元气体操': 4.5,
+      '比V': 4.2,
+      '双手比V': 3.0,
+      '右手比V': 3.0,
+      'OK手势': 3.2,
+      '兔耳朵手势': 3.5,
+      '开枪': 3.2,
+      '双手抱胸': 3.5,
+      '伸懒腰': 4.5,
     }
 
     let effectiveDuration = Math.max(1.0, duration)
@@ -936,14 +971,21 @@ export class Speech2MotionManager {
       console.log(`⏱️ Speech2Motion Action Gesture: 1:1 hardware synchronization locked (motion=${motionDur.toFixed(2)}s, audio=${audioDur.toFixed(2)}s, speed=1.00x)`)
     } else if (this.adaptiveSpeedEnabled && audioDur > 0.1 && motionDur > 0.1) {
       const idealSpeed = motionDur / audioDur
-      // Bound within human pacing limits (0.55x to 1.30x)
-      const clampedSpeed = Math.max(this.minSpeechSpeed, Math.min(this.maxSpeechSpeed, idealSpeed))
+      // Human pacing limits: strictly cap at 1.00x so mocap never looks rushed or frantic.
+      // If motion is longer than short audio (idealSpeed > 1.05x), play at calm natural 0.85x
+      // and let the animation follow through smoothly before settling to idle!
+      let clampedSpeed
+      if (idealSpeed > 1.05) {
+        clampedSpeed = 0.85
+      } else {
+        clampedSpeed = Math.max(this.minSpeechSpeed, Math.min(1.00, idealSpeed))
+      }
       this.adaptivePlaybackSpeed = clampedSpeed
       this.motionScaledDuration = motionDur / clampedSpeed
-      this.isDurationMatched = Math.abs(clampedSpeed - idealSpeed) < 0.01
+      this.isDurationMatched = Math.abs(clampedSpeed - idealSpeed) < 0.02
       console.log(`⏱️ Speech2Motion Adaptive Timing: motion=${motionDur.toFixed(2)}s, audio=${audioDur.toFixed(2)}s -> speed=${this.adaptivePlaybackSpeed.toFixed(2)}x (spans ${this.motionScaledDuration.toFixed(2)}s real-time, matched=${this.isDurationMatched})`)
     } else {
-      this.adaptivePlaybackSpeed = this.playbackSpeed || 0.80
+      this.adaptivePlaybackSpeed = this.playbackSpeed || 0.85
       this.motionScaledDuration = motionDur / this.adaptivePlaybackSpeed
       this.isDurationMatched = false
     }
@@ -1449,7 +1491,8 @@ export class Speech2MotionManager {
       this.idleBlendWeight = Math.min(1.0, this.idleBlendWeight + safeDelta * 2.0)
       this.idleTimer += safeDelta
     } else {
-      this.idleBlendWeight = Math.max(0.0, this.idleBlendWeight - safeDelta * 3.0)
+      // Rapidly zero out procedural idle sway during speech or action so it never clashes with mocap data
+      this.idleBlendWeight = Math.max(0.0, this.idleBlendWeight - safeDelta * 6.0)
     }
 
     // Check if speech audio is actively playing or scheduled from audioManager
@@ -1476,34 +1519,32 @@ export class Speech2MotionManager {
       if (audioElapsed < 0) {
         // Holding during lead-in before audio start:
         this.playbackTime = 0.0
-      } else if (this.isActionGestureActive || this.currentTrack?.isActionGesture) {
-        // For action gestures: 1:1 hardware synchronization with audio clock while audio is speaking,
-        // followed by natural continuous follow-through to complete the movement!
-        if (audioElapsed <= this.speechAudioDuration) {
-          const targetPlaybackTime = Math.min(totalDuration, audioElapsed)
-          const drift = targetPlaybackTime - this.playbackTime
-          if (Math.abs(drift) > 0.35) {
-            this.playbackTime = targetPlaybackTime
-          } else {
-            this.playbackTime = THREE.MathUtils.lerp(this.playbackTime, targetPlaybackTime, Math.min(1.0, safeDelta * 18.0))
-          }
-        } else {
-          // Audio sentence ended, but physical mocap action gesture continues to its natural end:
-          this.playbackTime = Math.min(totalDuration, this.playbackTime + safeDelta * 1.0)
-        }
-        this.playbackTime = Math.max(0.0, Math.min(totalDuration, this.playbackTime))
       } else {
-        // Conversational speech track:
-        const scaledDuration = this.motionScaledDuration || totalDuration
-        const progress = Math.max(0.0, Math.min(1.0, audioElapsed / Math.max(0.001, scaledDuration)))
-        const targetPlaybackTime = progress * totalDuration
+        const isAction = Boolean(this.isActionGestureActive || this.currentTrack?.isActionGesture)
+        const baseSpeed = isAction ? 1.00 : (this.adaptivePlaybackSpeed || 0.85)
+
+        let targetPlaybackTime
+        if (isAction) {
+          targetPlaybackTime = Math.min(totalDuration, audioElapsed)
+        } else {
+          const scaledDuration = this.motionScaledDuration || totalDuration
+          const progress = Math.max(0.0, Math.min(1.0, audioElapsed / Math.max(0.001, scaledDuration)))
+          targetPlaybackTime = progress * totalDuration
+        }
 
         const drift = targetPlaybackTime - this.playbackTime
-        if (Math.abs(drift) > 0.35) {
-          this.playbackTime = targetPlaybackTime
-        } else {
-          this.playbackTime = THREE.MathUtils.lerp(this.playbackTime, targetPlaybackTime, Math.min(1.0, safeDelta * 18.0))
+
+        // Phase-Locked Loop (PLL) velocity modulation:
+        // Adjust playback speed smoothly by up to ±10% to eliminate clock drift
+        // NEVER teleport or lerp violently — guarantees continuous, monotonic, jitter-free 60fps animation!
+        let speedModulation = 1.0
+        if (Math.abs(drift) > 0.02) {
+          const correction = THREE.MathUtils.clamp(drift * 0.75, -0.10, +0.10)
+          speedModulation += correction
         }
+
+        const effectiveSpeed = Math.max(0.55, Math.min(1.05, baseSpeed * speedModulation))
+        this.playbackTime = Math.min(totalDuration, this.playbackTime + safeDelta * effectiveSpeed)
         this.playbackTime = Math.max(0.0, Math.min(totalDuration, this.playbackTime))
       }
     } else if (this.isSpeechActive) {

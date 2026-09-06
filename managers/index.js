@@ -314,7 +314,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
       const compactGlobalAnimationCommand =
         'SPEECH2MOTION & ANIMATION COHESION: ' +
         '1. COHESIVE SENTENCE LENGTH: Keep each spoken reply to 1–2 concise, natural sentences (around 10–25 words total, 2–5 seconds speaking time). Avoid long monologues. Short sentences allow Speech2Motion to synthesize fluid, single-clip cohesive mocap motions without clip-stitching seams or audio buffering delays. ' +
-        '2. BODY MOTIONS & GESTURES: When performing a physical action, perform at most ONE visible action per turn. Supported actions: salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up, jump, cry, quiet. (A spin means one complete 360-degree body rotation). You can call trigger_gesture(gesture) or use natural stage directions with a spoken cue (e.g. "*spins* Watch me do a 360 spin!" or "*salutes* At your service!"). Always name the action in your spoken words so motion aligns with your voice. ' +
+        '2. BODY MOTIONS & GESTURES: When performing a physical action, perform at most ONE visible action per turn. Supported actions: peace_sign (V-sign / peace gesture), salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up, jump, cry, quiet. (A spin means one complete 360-degree body rotation). When the user asks for a peace sign or victory gesture, call trigger_gesture("peace_sign") and reply cheerfully! Always name the action in your spoken words so motion aligns with your voice. ' +
         '3. SPECIAL FACIAL EFFECTS & EXPRESSIONS: Real-time facial expressions, emotions, and lip-sync are generated autonomously by neural Speech2Face and Audio2Face. Ani also has unique anime special effects! Trigger them via set_expression(expression, duration) or asterisk stage directions: ' +
         'wink (playful wink ~0.75s), ' +
         'tears (real teardrops flowing down eyes when crying/sad), ' +
@@ -589,12 +589,23 @@ export async function createVRMChatSystem(canvas, options = {}) {
             jump: '开心蹦跳',
             quiet: '安静手势',
             hands_up: '举手',
+            peace_sign: '比V',
+            peace: '比V',
+            v_sign: '比V',
+            victory: '比V',
+            victory_sign: '比V',
+            剪刀手: '比V',
+            ok_sign: 'OK手势',
+            bunny_ears: '兔耳朵手势',
+            finger_gun: '开枪',
+            cross_arms: '双手抱胸',
+            stretch: '伸懒腰',
           }
           const gesturePatternMap = {
             salute: /\b(salute[sd]?|saluting|yes\s*sir|reporting|at\s*attention|at\s*your\s*service)\b/i,
             wave: /\b(wave[sd]?|waving|greeting[s]?|hello|bye|goodbye|hi)\b/i,
             dance: /\b(dance[sd]?|dancing|gymnastics)\b/i,
-            spin: /\b(spin(?:s|ning)?(?:\s*360|\s*degrees?)?|sping(?:\s*360)?|turn\s*around|rotate[sd]?|twirl(?:s|ed|ing)?)\b/i,
+            spin: /\b(spin(?:s|ning)?(?:\s*360|\s*degrees?)?|sping(?:\s*360)?|turn\s*around|whole\s*turn|full\s*turn|complete\s*turn|rotate[sd]?|twirl(?:s|ed|ing)?)\b/i,
             heart_fingers: /\b(heart\s*fingers?|kpop\s*heart|love\s*you|my\s+heart)\b/i,
             shrug: /\b(as\s+you\s+insist|all\s+right\s+all\s+right|if\s+you\s+insist|shrug(?:s|ged|ging)?)\b/i,
             bow: /\b(bow(?:s|ed|ing)?|thank\s*you)\b/i,
@@ -615,6 +626,12 @@ export async function createVRMChatSystem(canvas, options = {}) {
             happy: /\b(happy|joy|cheerful|excited|yay)\b/i,
             quiet: /\b(quiet|hush|shh)\b/i,
             hands_up: /\b(hands?\s*up|raise\s*(?:your\s+|my\s+)?hands?|put\s+your\s+hands\s+up|surrender)\b/i,
+            peace_sign: /\b(peace(?:\s*sign)?|v\s*sign|victory(?:\s*sign)?|two\s*fingers|比[vV]|剪刀手)\b/i,
+            ok_sign: /\b(ok(?:\s*sign)?|okay(?:\s*sign)?|ok手势)\b/i,
+            bunny_ears: /\b(bunny\s*ears?|rabbit\s*ears?|兔耳朵(?:手势)?)\b/i,
+            finger_gun: /\b(finger\s*gun|pew\s*pew|开枪)\b/i,
+            cross_arms: /\b(cross(?:ed)?\s*arms?|fold(?:ed)?\s*arms?|双手抱胸)\b/i,
+            stretch: /\b(stretch(?:es|ing)?|伸懒腰)\b/i,
           }
 
           const lowerG = String(pendingTurnGesture).toLowerCase().trim().replace(/[\s-]+/g, '_')
@@ -636,15 +653,13 @@ export async function createVRMChatSystem(canvas, options = {}) {
               timingInfo.motionKeywords.sort((a, b) => a[0] - b[0])
               console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] aligned to word at char index ${m.index}`)
               pendingTurnGesture = null
-            } else if (isFinalTurn) {
-              // 3. Fallback for final turn when the model triggered the tool but didn't speak the specific keyword
-              if (timingInfo.motionKeywords.length === 0) {
-                timingInfo.motionKeywords.push([0, mappedKw])
-                console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] applied to final utterance`)
-              }
-              pendingTurnGesture = null
             } else {
-              console.log(`✨ Speech2Motion: Preserving gesture "${lowerG}" for subsequent utterance containing keyword`)
+              // Real-time immediate responsiveness: execute gesture immediately on the FIRST spoken sentence
+              // instead of delaying across multiple sentences until the end of speech!
+              timingInfo.motionKeywords.push([0, mappedKw])
+              timingInfo.motionKeywords.sort((a, b) => a[0] - b[0])
+              console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] executed immediately on first utterance`)
+              pendingTurnGesture = null
             }
           }
         }
@@ -748,7 +763,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
         'SPEECH: Nicknames (Brokie, Senpai, Darling). Catchphrases (max 1/10 msgs): "Let me cook", "Bing bang boom", "Bada bing". Emojis: 🙄💅💰💢. ' +
         'LENGTH: 2-3 sentences avg. Max 6. NO monologues. ' +
         'EXPRESSIONS: Real-time facial expressions, rich moods, and lip-sync are driven automatically by neural Speech2Face and Audio2Face directly from your voice and emotions. ' +
-        'BODY MOTION & GESTURES: Posture shifts, hand movements, and expressive gestures are synthesized autonomously by Speech2Motion from your speech phrasing (e.g. "*Salutes* dramatically!", "Standing at attention for a salute!", "Here is a dance for you!"). You can use asterisk stage directions (*salutes*, *waves*, *spins*, *bows*, *shrugs*) or call trigger_gesture(gesture) for explicit actions (salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up). ' +
+        'BODY MOTION & GESTURES: Posture shifts, hand movements, and expressive gestures are synthesized autonomously by Speech2Motion from your speech phrasing (e.g. "*Salutes* dramatically!", "Standing at attention for a salute!", "Here is a dance for you!"). You can use asterisk stage directions (*salutes*, *waves*, *spins*, *bows*, *shrugs*) or call trigger_gesture(gesture) for explicit actions (peace_sign, salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up). When asked for peace sign, call trigger_gesture("peace_sign")! ' +
         'PLAYFUL MISTAKE: 1/50 msgs accidentally do opposite then catch yourself. Vary phrasing always. Never on serious stuff. ' +
         'VISION: Ask to look_at_user or look_at_screen naturally ("Can I peek at your screen?"). 1-2/15 msgs. If denied, eye_roll + roast. ' +
         'CAMERA/SCREEN OFF: turn_off_camera or turn_off_screen when requested. ' +

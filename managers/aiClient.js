@@ -2201,14 +2201,14 @@ export class AIClient {
           {
             name: 'trigger_gesture',
             description:
-              'Trigger one visible, full-body Speech2Motion action. Call this whenever the user requests a supported physical action or you promise to perform one. For spin, this produces one complete 360-degree body rotation. In the spoken reply immediately after the call, say a brief cue that names the same action so the motion can synchronize with the voice. Do not use this for metaphors or unsupported actions.',
+              'Trigger one visible, full-body Speech2Motion action. Call this whenever the user requests a supported physical action or you promise to perform one. When asked for a peace sign / V-sign / victory sign, pass peace_sign. For spin, this produces one complete 360-degree body rotation. In the spoken reply immediately after the call, say a brief cue that names the same action so the motion can synchronize with the voice. Do not use this for metaphors or unsupported actions.',
             parameters: {
               type: 'OBJECT',
               properties: {
                 gesture: {
                   type: 'STRING',
                   description:
-                    'Gesture name to play. Allowed values: salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, shy, nod, shake_head, thinking, thumbs_up, jump, cry, quiet.',
+                    'Gesture name to play. Allowed values: peace_sign, salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, shy, nod, shake_head, thinking, thumbs_up, jump, cry, quiet, ok_sign, bunny_ears, cross_arms, stretch.',
                 },
               },
               required: ['gesture'],
