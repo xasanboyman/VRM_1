@@ -1702,7 +1702,9 @@ export class AnimationManager {
       }
 
       // LookAt implementation - eyes track camera with smooth ocular micro-saccades
-      if (this.vrm.lookAt && this.camera) {
+      // During a 360-degree spin, suppress lookAt tracking so head rotates naturally with body
+      const isSpinning = Boolean(this.speech2motion?.isSpinning)
+      if (this.vrm.lookAt && this.camera && !isSpinning) {
         if (!this._lookAtTarget) {
           this._lookAtTarget = new THREE.Object3D()
           this.camera.add(this._lookAtTarget)

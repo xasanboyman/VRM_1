@@ -102,7 +102,7 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
 
   // 2. Keyword pattern matching for expressive human mocap motions and full-body emotions
   const keywordPatterns = [
-    { regex: /\b(spin(?:s|ning)?(?:\s*360|\s*degrees?)?|sping(?:\s*360)?|turn\s*around|whole\s*turn|full\s*turn|complete\s*turn|rotate[sd]?|twirl(?:s|ed|ing)?)\b/gi, keyword: '转圈' },
+    { regex: /\b(?:(?:spin(?:s|ning)?|sping|twirl(?:s|ed|ing)?|rotate[sd]?)(?:\s*(?:around|360|360\s*degrees?|degrees?))?|360\s*(?:degrees?\s*)?(?:spin|turn|rotation)?|turn\s*(?:around|360|360\s*degrees?)|whole\s*turn|full\s*turn|complete\s*turn)\b/gi, keyword: '转圈' },
     { regex: /\b(as\s+you\s+insist|all\s+right\s+all\s+right|if\s+you\s+insist|shrug(?:s|ged|ging)?)\b/gi, keyword: '摊手' },
     { regex: /\b(wave[sd]?|waving|greeting[s]?|hello|bye|goodbye|hi)\b/gi, keyword: '打招呼' },
     { regex: /\b(clap(?:s|ped|ping)?|applause)\b/gi, keyword: '鼓掌' },
@@ -340,6 +340,7 @@ export class Speech2MotionManager {
     // Deduplication & cooldown for action gestures (e.g. 360 spin, waving)
     this.recentActionGestures = new Map()
     this.currentActionKeyword = null
+    this.isSpinning = false
 
     // Full Emotion to Body Mocap Mapping Dictionary
     this.emotionAliasMap = {
@@ -426,6 +427,7 @@ export class Speech2MotionManager {
       spin_360: '转圈',
       rotate: '转圈',
       twirl: '转圈',
+      turn_around: '转圈',
       shrug: '摊手',
       shrugging: '摊手',
       as_you_insist: '摊手',
@@ -599,8 +601,9 @@ export class Speech2MotionManager {
       isIdle,
       isActionGesture,
     })
-    if (track && isActionGesture) {
-      track.isActionGesture = true
+    if (track) {
+      if (isActionGesture) track.isActionGesture = true
+      if (motionKeywords) track.motionKeywords = motionKeywords
     }
     return track
   }
@@ -744,6 +747,9 @@ export class Speech2MotionManager {
           if (track && hasPhysicalAction) {
             track.isActionGesture = true
           }
+          if (track && motionKeywords) {
+            track.motionKeywords = motionKeywords
+          }
           return track
         }
       } catch (wsErr) {
@@ -774,6 +780,9 @@ export class Speech2MotionManager {
             if (emotion) track.emotion = emotion
             if (track && hasPhysicalAction) {
               track.isActionGesture = true
+            }
+            if (track && motionKeywords) {
+              track.motionKeywords = motionKeywords
             }
             return track
           }
@@ -1015,12 +1024,9 @@ export class Speech2MotionManager {
     this.transitionElapsed = 0
     this.isActionGestureActive = Boolean(item.isActionGesture || track.isActionGesture)
     this.currentActionKeyword = null
-    if (this.isActionGestureActive) {
-      if (track.motionKeywords && track.motionKeywords.length > 0) {
-        this.currentActionKeyword = Array.isArray(track.motionKeywords[0]) ? track.motionKeywords[0][1] : track.motionKeywords[0]
-      } else if (item.track?.motionKeywords && item.track.motionKeywords.length > 0) {
-        this.currentActionKeyword = Array.isArray(item.track.motionKeywords[0]) ? item.track.motionKeywords[0][1] : item.track.motionKeywords[0]
-      }
+    const kwList = track.motionKeywords || item.motionKeywords || item.track?.motionKeywords || []
+    if (this.isActionGestureActive && kwList.length > 0) {
+      this.currentActionKeyword = Array.isArray(kwList[0]) ? kwList[0][1] : kwList[0]
     }
     this._speechSilenceTimer = 0
 
@@ -1133,6 +1139,7 @@ export class Speech2MotionManager {
       duration: audioDuration,
       endTime: speechStartTime + audioDuration,
       isActionGesture: isAction,
+      motionKeywords: track.motionKeywords || null,
     }
 
     const audioMgr = this.audioManager || (typeof window !== 'undefined' ? window.vrmAudioManager : null)
@@ -1432,6 +1439,14 @@ export class Speech2MotionManager {
       this.idleBlendWeight = 0.0
     } else {
       this.isIdleActive = true
+    }
+
+    if (track.isActionGesture) {
+      this.isActionGestureActive = true
+      const kwList = track.motionKeywords || []
+      if (kwList.length > 0) {
+        this.currentActionKeyword = Array.isArray(kwList[0]) ? kwList[0][1] : kwList[0]
+      }
     }
   }
 
@@ -1773,6 +1788,9 @@ export class Speech2MotionManager {
 
     // Organic idle head shifts & natural gaze wander (suppressed during speech/action to maintain eye contact):
     this._applyNaturalHeadAndGaze(safeDelta)
+
+    // Procedural body motion (full-body 360 spin rotation):
+    this._applySpinMotion(safeDelta)
 
     // 2. Apply Blendshapes
     if (this.vrm.expressionManager) {
@@ -2215,5 +2233,69 @@ export class Speech2MotionManager {
     this._gazeTargetYaw = targetYaw
     this._gazeTargetPitch = targetPitch
     this._gazeTargetRoll = targetRoll
+  }
+
+  _getBaseRotationY() {
+    if (!this.vrm || !this.vrm.scene) return 0
+    const isRiko = this.vrm.meta?.title === 'Riko' || this.vrm.meta?.name === 'Riko'
+    return isRiko ? Math.PI : 0
+  }
+
+  /**
+   * Procedural 360-degree full-body spin rotation.
+   * The official Speech2Motion dataset record for '转圈' contains upper-body arm flourishes
+   * but lacks full-body yaw rotation. This procedural layer smoothly rotates the avatar's
+   * root scene a full 360° (2π radians) with quintic Hermite easing (zero jerk/acceleration at start and end).
+   */
+  _applySpinMotion(delta) {
+    if (!this.vrm || !this.vrm.scene) return
+    const baseRotY = this._getBaseRotationY()
+
+    const isSpinAction = Boolean(
+      (this.isActionGestureActive || this.currentTrack?.isActionGesture) &&
+      this.currentActionKeyword === '转圈' &&
+      this.currentTrack &&
+      !this.currentTrack.is_idle
+    )
+
+    if (isSpinAction) {
+      const totalDuration = this.currentTrack.duration || (this.currentTrack.nFrames / (this.currentTrack.fps || 30.0)) || 4.5
+      // Spin timing window: smooth lead-in, graceful full turn, smooth follow-through
+      const startDelay = 0.25
+      const spinDuration = Math.max(1.8, Math.min(3.2, totalDuration - startDelay - 0.45))
+      const tEnd = startDelay + spinDuration
+
+      if (this.playbackTime >= startDelay && this.playbackTime <= tEnd) {
+        this.isSpinning = true
+        const p = Math.max(0, Math.min(1, (this.playbackTime - startDelay) / spinDuration))
+        // 5th-order Hermite smootherstep: zero 1st and 2nd derivatives at endpoints for silky-smooth rotation
+        const eased = p * p * p * (p * (p * 6 - 15) + 10)
+        // Rotate a full 360 degrees (2 * PI radians)
+        const spinAngle = -eased * Math.PI * 2
+        this.vrm.scene.rotation.y = baseRotY + spinAngle
+        return
+      } else if (this.playbackTime > tEnd) {
+        this.isSpinning = false
+        this.vrm.scene.rotation.y = baseRotY
+        return
+      } else {
+        // Still in startDelay wind-up
+        this.isSpinning = false
+        this.vrm.scene.rotation.y = baseRotY
+        return
+      }
+    }
+
+    // Not in spin action: if scene rotation is offset from base (e.g. user interrupted mid-spin), smoothly decay back to base
+    this.isSpinning = false
+    const diff = (this.vrm.scene.rotation.y - baseRotY) % (Math.PI * 2)
+    if (Math.abs(diff) > 0.005) {
+      let shortest = diff
+      if (shortest > Math.PI) shortest -= Math.PI * 2
+      if (shortest < -Math.PI) shortest += Math.PI * 2
+      this.vrm.scene.rotation.y = baseRotY + shortest * Math.max(0, 1 - delta * 8.0)
+    } else {
+      this.vrm.scene.rotation.y = baseRotY
+    }
   }
 }
