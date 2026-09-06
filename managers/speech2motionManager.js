@@ -54,6 +54,20 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
     else if (/hip/i.test(stage)) mapped = '叉腰'
     else if (/nod/i.test(stage)) mapped = '点头'
     else if (/shake/i.test(stage)) mapped = '摇头'
+    else if (/backflip|flip/i.test(stage)) mapped = '后空翻'
+    else if (/gangnam/i.test(stage)) mapped = '江南style'
+    else if (/hip\s*hop|hiphop|breakdance/i.test(stage)) mapped = '街舞'
+    else if (/macarena/i.test(stage)) mapped = '玛卡莲娜舞'
+    else if (/dab/i.test(stage)) mapped = '打手势'
+    else if (/kiss|mwah/i.test(stage)) mapped = '飞吻'
+    else if (/taunt|cutthroat/i.test(stage)) mapped = '挑衅'
+    else if (/pat|headpat/i.test(stage)) mapped = '摸摸头'
+    else if (/cheer|hooray|yay/i.test(stage)) mapped = '欢呼'
+    else if (/point/i.test(stage)) mapped = '指点'
+    else if (/phew|relief/i.test(stage)) mapped = '松了一口气'
+    else if (/eureka|aha/i.test(stage)) mapped = '恍然大悟'
+    else if (/sleep|yawn|nap/i.test(stage)) mapped = '打瞌睡'
+    else if (/bored/i.test(stage)) mapped = '无聊'
     else if (/dance/i.test(stage)) mapped = '元气体操'
     else if (/face\s*palm|facepalm/i.test(stage)) mapped = '捂脸'
     else if (/jump|bounce/i.test(stage)) mapped = '开心蹦跳'
@@ -86,8 +100,21 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
     { regex: /\b(happy|joy|cheerful|excited|yay)\b/gi, keyword: '开心' },
     { regex: /\b(salute[sd]?|saluting|yes\s*sir|reporting|at\s*attention|at\s*your\s*service)\b/gi, keyword: '敬礼' },
     { regex: /\b(face\s*palm(?:s|ed|ing)?|facepalm)\b/gi, keyword: '捂脸' },
+    { regex: /\b(backflip[s]?|flip[s]?|acrobatic)\b/gi, keyword: '后空翻' },
+    { regex: /\b(gangnam\s*style|oppa\s*gangnam|psy\s*dance)\b/gi, keyword: '江南style' },
+    { regex: /\b(hip\s*hop|breakdance|hiphop)\b/gi, keyword: '街舞' },
+    { regex: /\b(macarena)\b/gi, keyword: '玛卡莲娜舞' },
+    { regex: /\b(dab|dabbing)\b/gi, keyword: '打手势' },
+    { regex: /\b(blow\s*kiss(?:es)?|kisses|mwah|kiss\s*you)\b/gi, keyword: '飞吻' },
+    { regex: /\b(taunt(?:s|ing)?|bring\s*it\s*on|come\s*at\s*me)\b/gi, keyword: '挑衅' },
+    { regex: /\b(head\s*pat[s]?|pat(?:s|ting)?\s*(?:you|head)?)\b/gi, keyword: '摸摸头' },
+    { regex: /\b(cheer(?:s|ing)?|fight|let's\s+go|hooray|yay|hurray)\b/gi, keyword: '欢呼' },
+    { regex: /\b(point(?:s|ing)?|look\s*there|that\s*way)\b/gi, keyword: '指点' },
+    { regex: /\b(phew|what\s*a\s*relief|thank\s*goodness)\b/gi, keyword: '松了一口气' },
+    { regex: /\b(eureka|aha|lightbulb|i\s*get\s*it\s*now)\b/gi, keyword: '恍然大悟' },
+    { regex: /\b(sleep(?:s|ing|y)?|zzz|nap|drowsy|yawn(?:s|ed|ing)?)\b/gi, keyword: '打瞌睡' },
+    { regex: /\b(bored|boring|so\s*bored)\b/gi, keyword: '无聊' },
     { regex: /\b(dance[sd]?|dancing|gymnastics)\b/gi, keyword: '元气体操' },
-    { regex: /\b(cheer(?:s|ing)?|fight|let's\s+go)\b/gi, keyword: '加油' },
     { regex: /\b(quiet|hush|shh)\b/gi, keyword: '安静手势' },
     { regex: /\b(hands?\s*up|raise\s*(?:your\s+|my\s+)?hands?|put\s+your\s+hands\s+up|surrender)\b/gi, keyword: '举手' },
   ]
