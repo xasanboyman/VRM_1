@@ -17,8 +17,9 @@ import * as THREE from 'three'
 export class Audio2FaceManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
+    const DEFAULT_AUDIO2FACE_URL = 'https://xn--dr8haa.uz/oracle/audio2face'
     const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_AUDIO2FACE_URL
-    this.apiEndpoint = options.apiEndpoint || (envUrl ? `${envUrl}/api/audio2face/generate` : '/api/audio2face/generate')
+    this.apiEndpoint = options.apiEndpoint || (envUrl ? `${envUrl}/api/v1/audio2face/generate` : `${DEFAULT_AUDIO2FACE_URL}/api/v1/audio2face/generate`)
     this.profileName = options.profileName || 'Ani-default'
     this.enabled = options.enabled !== false
     this.isAvailable = true

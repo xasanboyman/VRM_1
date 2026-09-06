@@ -126,8 +126,11 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
 export class Speech2MotionManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
+    const DEFAULT_SPEECH2MOTION_URL = 'https://xn--dr8haa.uz/oracle/speech2motion'
+    const DEFAULT_SPEECH2MOTION_WS_URL = 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/speech2motion/ws'
+
     const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_URL
-    this.apiEndpoint = options.apiEndpoint || (envUrl ? `${envUrl}/api/speech2motion/generate` : '/api/speech2motion/generate')
+    this.apiEndpoint = options.apiEndpoint || (envUrl ? `${envUrl}/api/v3/speech2motion/generate` : `${DEFAULT_SPEECH2MOTION_URL}/api/v3/speech2motion/generate`)
     this.avatarName = options.avatarName || 'Ani-default'
     this.enabled = options.enabled !== false
 
@@ -148,15 +151,13 @@ export class Speech2MotionManager {
         try {
           const u = new URL(envUrl)
           const protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
-          this.wsEndpoint = `${protocol}//${u.host}/speech2motion-ws/api/v3/speech2motion/ws`
-        } catch (_) {}
-      } else {
-        const loc = window.location
-        const isLocalhost = loc.hostname === 'localhost' || loc.hostname === '127.0.0.1'
-        if (isLocalhost) {
-          const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:'
-          this.wsEndpoint = `${protocol}//${loc.host}/speech2motion-ws/api/v3/speech2motion/ws`
+          const basePath = u.pathname.replace(/\/+$/, '')
+          this.wsEndpoint = `${protocol}//${u.host}${basePath}/api/v3/speech2motion/ws`
+        } catch (_) {
+          this.wsEndpoint = DEFAULT_SPEECH2MOTION_WS_URL
         }
+      } else {
+        this.wsEndpoint = DEFAULT_SPEECH2MOTION_WS_URL
       }
     }
     this.wsPendingRequests = new Map()
