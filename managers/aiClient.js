@@ -2201,7 +2201,7 @@ export class AIClient {
           {
             name: 'trigger_gesture',
             description:
-              'Trigger a full-body mocap gesture or emotion posture for the avatar (e.g. salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, shy, nod, shake_head, thinking, thumbs_up).',
+              'Trigger one visible, full-body Speech2Motion action. Call this whenever the user requests a supported physical action or you promise to perform one. For spin, this produces one complete 360-degree body rotation. In the spoken reply immediately after the call, say a brief cue that names the same action so the motion can synchronize with the voice. Do not use this for metaphors or unsupported actions.',
             parameters: {
               type: 'OBJECT',
               properties: {

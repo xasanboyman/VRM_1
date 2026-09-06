@@ -313,7 +313,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
       const normalizedPreferredLanguage = resolveLanguage(preferredLanguage)
       const compactGlobalAnimationCommand =
         'FACIAL EXPRESSIONS & LIP-SYNC: Real-time facial expressions, emotions, and mouth lip-sync are generated autonomously by neural Speech2Face and Audio2Face directly from your spoken voice and emotional tone. When crying or sad, real tear drops appear in your eyes! You can call set_expression(expression, duration) for expressions (tears, crying, blush, anger_mark, sweat, star_eyes, happy, sad, angry, surprised, wink, cat_mouth). ' +
-        'BODY ANIMATIONS & GESTURES: Your body motion is synthesized autonomously by Speech2Motion from your speech, sentiment, and action phrases (e.g. "*Salutes* dramatically!", "Let me wave hello!", "Standing at attention for a salute!"). You can use asterisk stage directions (*salutes*, *waves*, *spins*, *bows*, *shrugs*) or call trigger_gesture(gesture) for explicit actions (salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up, cry).'
+        'BODY MOTION TOOL PROTOCOL: Speech2Motion creates actual full-body motion from the spoken reply plus motion keywords. When the user asks for, or you promise, a visible supported action, you MUST call trigger_gesture exactly once in that same turn; do not merely narrate or write a stage direction. Use only: salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up, jump, cry, quiet. A spin means one complete 360-degree body rotation. After the tool call, say a short natural cue naming that action so it is timed with speech—for example, "Watch me spin 360 degrees!" or "Here comes a wave!". Do not trigger an action for figurative language or actions outside this list.'
       const compactDefaultSystemPrompt =
         'You are Rico, a witty and slightly sassy assistant. Be playful, concise, and genuinely helpful. ' +
         'Keep replies short, avoid monologues, and use light roasting only when it fits. ' +
@@ -587,24 +587,21 @@ export async function createVRMChatSystem(canvas, options = {}) {
             console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] aligned directly to spoken word in text`)
             pendingTurnGesture = null
           } else {
-            // 2. Check if utteranceText contains the matching word/phrase and align to its exact character offset
+            // A Live tool call is authoritative. Keep the requested action even if
+            // the generated reply contains another incidental gesture such as "hi"
+            // (which otherwise used to suppress a requested 360-degree spin).
+            // When Gemini speaks an action cue, align to it; otherwise start the
+            // action at the utterance beginning so motion and audio stay together.
             const pat = gesturePatternMap[lowerG]
             const m = pat ? pat.exec(utteranceText) : null
-            if (m) {
-              timingInfo.motionKeywords.push([m.index, mappedKw])
-              timingInfo.motionKeywords.sort((a, b) => a[0] - b[0])
-              console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] aligned to word at char index ${m.index}`)
-              pendingTurnGesture = null
-            } else if (isFinalTurn) {
-              // 3. Fallback for final turn when the model triggered the tool but didn't speak the specific word
-              if (timingInfo.motionKeywords.length === 0) {
-                timingInfo.motionKeywords.push([0, mappedKw])
-                console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] applied to final utterance`)
-              }
-              pendingTurnGesture = null
-            } else {
-              console.log(`✨ Speech2Motion: Preserving gesture "${lowerG}" for subsequent utterance containing keyword`)
-            }
+            const actionOffset = m ? m.index : 0
+            timingInfo.motionKeywords.push([actionOffset, mappedKw])
+            timingInfo.motionKeywords.sort((a, b) => a[0] - b[0])
+            console.log(
+              `✨ Speech2Motion: Authoritative gesture "${lowerG}" -> [${mappedKw}] ` +
+              `${m ? `aligned to cue at char index ${actionOffset}` : 'started with this utterance'}`,
+            )
+            pendingTurnGesture = null
           }
         }
 
