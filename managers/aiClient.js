@@ -1,5 +1,4 @@
 import { GoogleGenAI } from '@google/genai'
-import { appUrl } from '../src/utils/appUrl.js'
 
 export function stripExpressionCommands(text) {
   if (typeof text !== 'string') return ''
@@ -1789,7 +1788,7 @@ export class AIClient {
         .join(',')
 
       const queryTags = tags || 'landscape'
-      const searchUrl = `${appUrl('api/search-image')}?q=${encodeURIComponent(prompt.trim())}`
+      const searchUrl = `/api/search-image?q=${encodeURIComponent(prompt.trim())}`
 
       let imageUrl = null
       try {
@@ -1813,7 +1812,7 @@ export class AIClient {
       }
 
       const finalFetchUrl = imageUrl.startsWith('http')
-        ? `${appUrl('api/proxy-image')}?url=${encodeURIComponent(imageUrl)}`
+        ? `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`
         : imageUrl
 
       fetch(finalFetchUrl)
@@ -2201,38 +2200,17 @@ export class AIClient {
           {
             name: 'trigger_gesture',
             description:
-              'Trigger one visible, full-body Speech2Motion action. Call this whenever the user requests a supported physical action or you promise to perform one. When asked for a peace sign / V-sign / victory sign, pass peace_sign. For spin, this produces one complete 360-degree body rotation. In the spoken reply immediately after the call, say a brief cue that names the same action so the motion can synchronize with the voice. Do not use this for metaphors or unsupported actions.',
+              'Trigger a full-body mocap gesture or emotion posture for the avatar (e.g. salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, shy, nod, shake_head, thinking, thumbs_up).',
             parameters: {
               type: 'OBJECT',
               properties: {
                 gesture: {
                   type: 'STRING',
                   description:
-                    'Gesture name to play. Allowed values: peace_sign, salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, shy, nod, shake_head, thinking, thumbs_up, jump, cry, quiet, ok_sign, bunny_ears, cross_arms, stretch.',
+                    'Gesture name to play. Allowed values: salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, shy, nod, shake_head, thinking, thumbs_up, jump, cry, quiet.',
                 },
               },
               required: ['gesture'],
-            },
-          },
-          {
-            name: 'set_expression',
-            description:
-              'Trigger a facial expression or special anime effect on the avatar face (e.g. wink/wink2 for a playful wink, tears when sad or crying, blush when shy/embarrassed, anger_mark when angry, sweat when nervous, star_eyes when amazed, happy, sad, angry, surprised, relaxed, smile, smirk, tehepero, cat_mouth, neutral).',
-            parameters: {
-              type: 'OBJECT',
-              properties: {
-                expression: {
-                  type: 'STRING',
-                  description:
-                    'The expression name to trigger. Allowed values: wink, wink2, wink2_right, tears, crying, blush, blush_lines, anger_mark, sweat, star_eyes, dizzy, shocked, happy, sad, angry, surprised, relaxed, smile, smirk, cat_mouth, tehepero, neutral.',
-                },
-                duration: {
-                  type: 'NUMBER',
-                  description:
-                    'Duration in seconds to hold the expression before fading back to neutral (default: 4.0s, winks auto-capped to 0.75s).',
-                },
-              },
-              required: ['expression'],
             },
           },
           {

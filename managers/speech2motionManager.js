@@ -1,67 +1,5 @@
 import * as THREE from 'three'
 import { stripExpressionCommands } from './aiClient.js'
-import { decodeSpeech2MotionResponse, encodeSpeech2MotionRequest } from './protobuf.js'
-import defaultIdleData from '../src/assets/default_idle_track.json'
-
-export function easeInOutCubic(x) {
-  return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2
-}
-
-export const SPEECH2MOTION_TO_VRM_HUMANOID = {
-  Hips: 'hips',
-  Spine: 'spine',
-  Chest: 'chest',
-  Neck: 'neck',
-  Head: 'head',
-  Eye_L: 'leftEye',
-  Eye_R: 'rightEye',
-  Left_shoulder: 'leftShoulder',
-  Left_arm: 'leftUpperArm',
-  Left_elbow: 'leftLowerArm',
-  Left_wrist: 'leftHand',
-  Right_shoulder: 'rightShoulder',
-  Right_arm: 'rightUpperArm',
-  Right_elbow: 'rightLowerArm',
-  Right_wrist: 'rightHand',
-  Left_leg: 'leftUpperLeg',
-  Left_knee: 'leftLowerLeg',
-  Left_ankle: 'leftFoot',
-  Left_toe: 'leftToes',
-  Right_leg: 'rightUpperLeg',
-  Right_knee: 'rightLowerLeg',
-  Right_ankle: 'rightFoot',
-  Right_toe: 'rightToes',
-  Thumb0_L: 'leftThumbMetacarpal',
-  Thumb1_L: 'leftThumbProximal',
-  Thumb2_L: 'leftThumbDistal',
-  IndexFinger1_L: 'leftIndexProximal',
-  IndexFinger2_L: 'leftIndexIntermediate',
-  IndexFinger3_L: 'leftIndexDistal',
-  MiddleFinger1_L: 'leftMiddleProximal',
-  MiddleFinger2_L: 'leftMiddleIntermediate',
-  MiddleFinger3_L: 'leftMiddleDistal',
-  RingFinger1_L: 'leftRingProximal',
-  RingFinger2_L: 'leftRingIntermediate',
-  RingFinger3_L: 'leftRingDistal',
-  LittleFinger1_L: 'leftLittleProximal',
-  LittleFinger2_L: 'leftLittleIntermediate',
-  LittleFinger3_L: 'leftLittleDistal',
-  Thumb0_R: 'rightThumbMetacarpal',
-  Thumb1_R: 'rightThumbProximal',
-  Thumb2_R: 'rightThumbDistal',
-  IndexFinger1_R: 'rightIndexProximal',
-  IndexFinger2_R: 'rightIndexIntermediate',
-  IndexFinger3_R: 'rightIndexDistal',
-  MiddleFinger1_R: 'rightMiddleProximal',
-  MiddleFinger2_R: 'rightMiddleIntermediate',
-  MiddleFinger3_R: 'rightMiddleDistal',
-  RingFinger1_R: 'rightRingProximal',
-  RingFinger2_R: 'rightRingIntermediate',
-  RingFinger3_R: 'rightRingDistal',
-  LittleFinger1_R: 'rightLittleProximal',
-  LittleFinger2_R: 'rightLittleIntermediate',
-  LittleFinger3_R: 'rightLittleDistal',
-}
 
 /**
  * Extract word timestamps and detected motion keywords from speech text.
@@ -77,19 +15,6 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
   const totalChars = text.length
   if (totalChars === 0 || duration <= 0) {
     return { speechTime: [], motionKeywords: [] }
-  }
-
-  // If all actions are excluded for this chunk (e.g. multi-sentence turn where an action already triggered),
-  // return speechTime for lip-sync and timing but no action keywords!
-  if (excludeKeywords && (excludeKeywords.has('ALL_ACTIONS') || excludeKeywords.has('all_actions'))) {
-    const wordRegex = /\S+/g
-    const words = []
-    let match
-    while ((match = wordRegex.exec(text)) !== null) {
-      words.push({ word: match[0], charIndex: match.index, length: match[0].length })
-    }
-    const speechTime = words.map(w => [w.charIndex, Number(((w.charIndex / totalChars) * duration).toFixed(3))])
-    return { speechTime, motionKeywords: [] }
   }
 
   // Find all words and calculate character offsets
@@ -129,31 +54,11 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
     else if (/hip/i.test(stage)) mapped = '叉腰'
     else if (/nod/i.test(stage)) mapped = '点头'
     else if (/shake/i.test(stage)) mapped = '摇头'
-    else if (/backflip|flip/i.test(stage)) mapped = '后空翻'
-    else if (/gangnam/i.test(stage)) mapped = '江南style'
-    else if (/hip\s*hop|hiphop|breakdance/i.test(stage)) mapped = '街舞'
-    else if (/macarena/i.test(stage)) mapped = '玛卡莲娜舞'
-    else if (/dab/i.test(stage)) mapped = '打手势'
-    else if (/kiss|mwah/i.test(stage)) mapped = '飞吻'
-    else if (/taunt|cutthroat/i.test(stage)) mapped = '挑衅'
-    else if (/pat|headpat/i.test(stage)) mapped = '摸摸头'
-    else if (/cheer|hooray|yay/i.test(stage)) mapped = '欢呼'
-    else if (/point/i.test(stage)) mapped = '指点'
-    else if (/phew|relief/i.test(stage)) mapped = '松了一口气'
-    else if (/eureka|aha/i.test(stage)) mapped = '恍然大悟'
-    else if (/sleep|yawn|nap/i.test(stage)) mapped = '打瞌睡'
-    else if (/bored/i.test(stage)) mapped = '无聊'
     else if (/dance/i.test(stage)) mapped = '元气体操'
     else if (/face\s*palm|facepalm/i.test(stage)) mapped = '捂脸'
     else if (/jump|bounce/i.test(stage)) mapped = '开心蹦跳'
     else if (/think|ponder/i.test(stage)) mapped = '思考'
     else if (/hands?\s*up|raise\s*(?:your\s+|my\s+)?hands?/i.test(stage)) mapped = '举手'
-    else if (/peace|v_sign|victory|two_fingers|比v|剪刀手/i.test(stage)) mapped = '比V'
-    else if (/ok/i.test(stage)) mapped = 'OK手势'
-    else if (/bunny|rabbit/i.test(stage)) mapped = '兔耳朵手势'
-    else if (/gun|pew/i.test(stage)) mapped = '开枪'
-    else if (/cross\s*arms|fold\s*arms/i.test(stage)) mapped = '双手抱胸'
-    else if (/stretch/i.test(stage)) mapped = '伸懒腰'
 
     if (mapped) {
       motionKeywords.push([astMatch.index, mapped])
@@ -163,7 +68,7 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
 
   // 2. Keyword pattern matching for expressive human mocap motions and full-body emotions
   const keywordPatterns = [
-    { regex: /\b(?:(?:spin(?:s|ning)?|sping|twirl(?:s|ed|ing)?|rotate[sd]?)(?:\s*(?:around|360|360\s*degrees?|degrees?))?|360\s*(?:degrees?\s*)?(?:spin|turn|rotation)?|turn\s*(?:around|360|360\s*degrees?)|whole\s*turn|full\s*turn|complete\s*turn)\b/gi, keyword: '转圈' },
+    { regex: /\b(spin(?:s|ning)?(?:\s*360|\s*degrees?)?|sping(?:\s*360)?|turn\s*around|rotate[sd]?|twirl(?:s|ed|ing)?)\b/gi, keyword: '转圈' },
     { regex: /\b(as\s+you\s+insist|all\s+right\s+all\s+right|if\s+you\s+insist|shrug(?:s|ged|ging)?)\b/gi, keyword: '摊手' },
     { regex: /\b(wave[sd]?|waving|greeting[s]?|hello|bye|goodbye|hi)\b/gi, keyword: '打招呼' },
     { regex: /\b(clap(?:s|ped|ping)?|applause)\b/gi, keyword: '鼓掌' },
@@ -181,29 +86,10 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
     { regex: /\b(happy|joy|cheerful|excited|yay)\b/gi, keyword: '开心' },
     { regex: /\b(salute[sd]?|saluting|yes\s*sir|reporting|at\s*attention|at\s*your\s*service)\b/gi, keyword: '敬礼' },
     { regex: /\b(face\s*palm(?:s|ed|ing)?|facepalm)\b/gi, keyword: '捂脸' },
-    { regex: /\b(backflip[s]?|flip[s]?|acrobatic)\b/gi, keyword: '后空翻' },
-    { regex: /\b(gangnam\s*style|oppa\s*gangnam|psy\s*dance)\b/gi, keyword: '江南style' },
-    { regex: /\b(hip\s*hop|breakdance|hiphop)\b/gi, keyword: '街舞' },
-    { regex: /\b(macarena)\b/gi, keyword: '玛卡莲娜舞' },
-    { regex: /\b(dab|dabbing)\b/gi, keyword: '打手势' },
-    { regex: /\b(blow\s*kiss(?:es)?|kisses|mwah|kiss\s*you)\b/gi, keyword: '飞吻' },
-    { regex: /\b(taunt(?:s|ing)?|bring\s*it\s*on|come\s*at\s*me)\b/gi, keyword: '挑衅' },
-    { regex: /\b(head\s*pat[s]?|pat(?:s|ting)?\s*(?:you|head)?)\b/gi, keyword: '摸摸头' },
-    { regex: /\b(cheer(?:s|ing)?|fight|let's\s+go|hooray|yay|hurray)\b/gi, keyword: '欢呼' },
-    { regex: /\b(point(?:s|ing)?|look\s*there|that\s*way)\b/gi, keyword: '指点' },
-    { regex: /\b(phew|what\s*a\s*relief|thank\s*goodness)\b/gi, keyword: '松了一口气' },
-    { regex: /\b(eureka|aha|lightbulb|i\s*get\s*it\s*now)\b/gi, keyword: '恍然大悟' },
-    { regex: /\b(sleep(?:s|ing|y)?|zzz|nap|drowsy|yawn(?:s|ed|ing)?)\b/gi, keyword: '打瞌睡' },
-    { regex: /\b(bored|boring|so\s*bored)\b/gi, keyword: '无聊' },
     { regex: /\b(dance[sd]?|dancing|gymnastics)\b/gi, keyword: '元气体操' },
+    { regex: /\b(cheer(?:s|ing)?|fight|let's\s+go)\b/gi, keyword: '加油' },
     { regex: /\b(quiet|hush|shh)\b/gi, keyword: '安静手势' },
     { regex: /\b(hands?\s*up|raise\s*(?:your\s+|my\s+)?hands?|put\s+your\s+hands\s+up|surrender)\b/gi, keyword: '举手' },
-    { regex: /\b(peace(?:\s*sign)?|v\s*sign|victory(?:\s*sign)?|two\s*fingers|比[vV]|剪刀手)\b/gi, keyword: '比V' },
-    { regex: /\b(ok(?:\s*sign)?|okay(?:\s*sign)?|ok手势)\b/gi, keyword: 'OK手势' },
-    { regex: /\b(bunny\s*ears?|rabbit\s*ears?|兔耳朵(?:手势)?)\b/gi, keyword: '兔耳朵手势' },
-    { regex: /\b(finger\s*gun|pew\s*pew|开枪)\b/gi, keyword: '开枪' },
-    { regex: /\b(cross(?:ed)?\s*arms?|fold(?:ed)?\s*arms?|双手抱胸)\b/gi, keyword: '双手抱胸' },
-    { regex: /\b(stretch(?:es|ing)?|伸懒腰)\b/gi, keyword: '伸懒腰' },
   ]
 
   for (const kp of keywordPatterns) {
@@ -220,29 +106,6 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
 
   return { speechTime, motionKeywords }
 }
-
-export const PHYSICAL_ACTION_KEYWORDS = new Set([
-  '转圈',      // spin 360
-  '元气体操',  // dance
-  '江南style',  // gangnam style
-  '街舞',      // hip hop dance
-  '玛卡莲娜舞', // macarena
-  '后空翻',    // backflip
-  '比V',       // peace sign
-  '双手比V',   // double peace sign
-  '右手比V',   // right peace sign
-  '比心',      // heart fingers
-  '敬礼',      // salute
-  '鞠躬',      // bow
-  'OK手势',    // ok sign
-  '兔耳朵手势', // bunny ears
-  '开枪',      // finger gun
-  '双手抱胸',  // cross arms
-  '伸懒腰',    // stretch
-  '开心蹦跳',  // jump
-  '挑衅',      // taunt
-  '飞吻',      // blow kiss
-])
 
 /**
  * Speech2MotionManager
@@ -263,85 +126,58 @@ export const PHYSICAL_ACTION_KEYWORDS = new Set([
 export class Speech2MotionManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
-    const DEFAULT_SPEECH2MOTION_URL = 'https://xn--dr8haa.uz/oracle/speech2motion'
-    const DEFAULT_SPEECH2MOTION_WS_URL = 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/speech2motion/ws'
-    const DEFAULT_SPEECH2MOTION_PROTO_WS_URL = 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/streaming_speech2motion/ws'
+    const envWsUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_SPEECH2MOTION_WS_URL : null
+    const envApiUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_SPEECH2MOTION_URL : null
 
-    const envUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_URL) || DEFAULT_SPEECH2MOTION_URL
-    this.apiEndpoint = options.apiEndpoint || `${envUrl.replace(/\/+$/, '')}/api/v3/speech2motion/generate`
-    this.avatarName = options.avatarName || 'all'
+    this.apiEndpoint = options.apiEndpoint || (envApiUrl ? `${envApiUrl.replace(/\/+$/, '')}/api/v3/speech2motion/generate` : '/api/speech2motion/generate')
+    this.avatarName = options.avatarName || 'Ani-default'
     this.enabled = options.enabled !== false
 
-    // State tracking & circuit breaker (online by default with bundled idle track)
-    this.isOnline = true
-    this.isBackendConnected = false
-    this.consecutiveFailures = 0
-    this.wsReconnectAttempts = 0
-    this.maxWsReconnectAttempts = 1
-
-    // 1. Persistent low-latency JSON WebSocket (single long-lived connection)
+    // Persistent WebSocket for streaming motion generation (ultra low latency)
     this.ws = null
-    const rawWsUrl = options.wsEndpoint || ((typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_WS_URL) || DEFAULT_SPEECH2MOTION_WS_URL)
-    this.wsEndpoint = rawWsUrl.includes('streaming_speech2motion') ? DEFAULT_SPEECH2MOTION_WS_URL : rawWsUrl
-
-    // 2. Official Protobuf WebSocket (fallback)
-    this.protobufWsEndpoint = DEFAULT_SPEECH2MOTION_PROTO_WS_URL
-
+    this.wsEndpoint = options.wsEndpoint || envWsUrl || null
+    if (!this.wsEndpoint && typeof window !== 'undefined') {
+      const loc = window.location
+      const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:'
+      this.wsEndpoint = `${protocol}//${loc.host}/speech2motion-ws/api/v3/speech2motion/ws`
+    }
     this.wsPendingRequests = new Map()
     this.wsReconnectTimer = null
-    if (this.wsEndpoint) {
-      this._initWebSocket()
-    }
+    this._lastIdleRetryTime = 0
 
-    // Dual-timeline blending buffers (dlp3d.ai pattern):
-    // LHS: continuously looping idle animation (always active, never null)
-    this.idleTrack = null
-    this.lhsPlaybackTime = 0.0
-    this.idlePlaybackSpeed = options.idlePlaybackSpeed || 0.75
-
-    // RHS: streamed speech or action gesture animation
-    this.actionTrack = null
-    this.rhsPlaybackTime = 0.0
-    this.isActionGestureActive = false
-    this.currentActionKeyword = null
-
-    // Dual-buffer continuous cubic blend weights (dlp3d.ai pattern):
-    // 0.0 = 100% LHS (idle), 1.0 = 100% RHS (action/speech)
-    this.jointBlendWeight = 0.0
-    this.blendTimer = 0.0
-    this.isBlendingIn = false
-    this.isBlendingOut = false
-    this.BLEND_IN_TIME = 0.30 // 300ms cubic ease-in
-    this.BLEND_OUT_TIME = 0.60 // 600ms cubic ease-out
-
-    // Playback state (backward compatible)
+    // Playback state
     this.currentTrack = null
     this.nextTrack = null
     this.playbackTime = 0
-    this.isPlaying = true
+    this.isPlaying = false
     this.isFetchingNext = false
-    this.isInfiniteActive = true
-    this.isIdleActive = true
+    this.isInfiniteActive = false
     this.isSpeechActive = false
     this.speechStartTime = 0
     this.speechAudioDuration = 0
     this._speechSilenceTimer = 0
     this.speechTrackQueue = []
     this.currentEmotion = 'idle'
-    this.cachedIdleTrack = null
-    this.wsRequestInProgress = false
+    this.isActionGestureActive = false
+    this.isFetchingActionGesture = false
 
     // Cross-fade state
     this.transitionFromPose = new Map()
-    this.transitionBlendDuration = 0.45
-    this.transitionElapsed = 1.0
+    this.transitionBlendDuration = 0.45 // 450ms smooth continuous crossfade
+    this.transitionElapsed = 1.0 // start fully settled
 
-    this.playbackSpeed = options.playbackSpeed || 0.85
+    // Calibrated natural pacing:
+    // - Idle: 0.72x for relaxed, gentle breathing (matches VTuber reference)
+    // - Gestures/Emotions: 1.0x for real physical mocap accuracy (e.g. 360 degree spin)
+    this.playbackSpeed = options.playbackSpeed || 1.0
+    this.idlePlaybackSpeed = options.idlePlaybackSpeed || 0.72
 
     // Audio-Adaptive Timing & Pacing:
+    // Dynamically adjust animation playback speed (slow or fast) to naturally match
+    // the speech audio duration without artificial looping, repeating, or cut-offs.
     this.adaptiveSpeedEnabled = options.adaptiveSpeedEnabled !== false
-    this.minSpeechSpeed = options.minSpeechSpeed || 0.50
-    this.maxSpeechSpeed = Math.min(1.00, options.maxSpeechSpeed || 1.00)
+    this.minSpeechSpeed = options.minSpeechSpeed || 0.40 // Calmed lower bound for longer speech (mostly slowing)
+    this.maxSpeechSpeed = options.maxSpeechSpeed || 1.15 // Gentle upper bound (can faster but not that much)
     this.adaptivePlaybackSpeed = this.playbackSpeed
     this.motionScaledDuration = 0
     this.isDurationMatched = false
@@ -362,26 +198,9 @@ export class Speech2MotionManager {
     this._tempMatrix = new THREE.Matrix4()
     this._tempQuatA = new THREE.Quaternion()
     this._tempQuatB = new THREE.Quaternion()
-    this._tempQuatL = new THREE.Quaternion()
-    this._tempQuatR = new THREE.Quaternion()
     this._resultQuat = new THREE.Quaternion()
     this._tempVecA = new THREE.Vector3()
     this._tempVecB = new THREE.Vector3()
-
-    // Pre-parse bundled default idle track so LHS is active immediately at 0ms!
-    if (defaultIdleData) {
-      try {
-        const parsedDefault = this._parseMotionPayload(defaultIdleData)
-        if (parsedDefault) {
-          parsedDefault.is_idle = true
-          this.idleTrack = parsedDefault
-          this.cachedIdleTrack = parsedDefault
-          this.currentTrack = parsedDefault
-        }
-      } catch (err) {
-        console.warn('Speech2Motion default idle parse error:', err)
-      }
-    }
 
     // Natural lifelike idle head & gaze wander state (Hermite S-curve interpolation)
     this._headAdditiveEuler = new THREE.Euler(0, 0, 0, 'YXZ')
@@ -434,7 +253,6 @@ export class Speech2MotionManager {
     // Deduplication & cooldown for action gestures (e.g. 360 spin, waving)
     this.recentActionGestures = new Map()
     this.currentActionKeyword = null
-    this.isSpinning = false
 
     // Full Emotion to Body Mocap Mapping Dictionary
     this.emotionAliasMap = {
@@ -521,7 +339,6 @@ export class Speech2MotionManager {
       spin_360: '转圈',
       rotate: '转圈',
       twirl: '转圈',
-      turn_around: '转圈',
       shrug: '摊手',
       shrugging: '摊手',
       as_you_insist: '摊手',
@@ -543,21 +360,12 @@ export class Speech2MotionManager {
       raise_hands: '举手',
       raise_hand: '举手',
       surrender: '举手',
-      peace: '比V',
-      peace_sign: '比V',
-      v_sign: '比V',
-      victory: '比V',
-      victory_sign: '比V',
-      two_fingers: '比V',
-      比v: '比V',
-      剪刀手: '比V',
-      ok: 'OK手势',
-      ok_sign: 'OK手势',
-      bunny_ears: '兔耳朵手势',
-      rabbit_ears: '兔耳朵手势',
-      finger_gun: '开枪',
-      cross_arms: '双手抱胸',
+      peace: '双手比V',
+      peace_sign: '双手比V',
+      v_sign: '双手比V',
       stretch: '伸懒腰',
+      gun: '开枪',
+      shoot: '开枪',
     }
   }
 
@@ -587,20 +395,8 @@ export class Speech2MotionManager {
   getBone(name) {
     if (!name || name === 'Root') return null
     if (this.boneCache.has(name)) return this.boneCache.get(name)
-    if (!this.vrm) return null
-
-    // 1. Direct object name match (e.g. in Ani.vrm)
-    let bone = this.vrm.scene?.getObjectByName(name)
-
-    // 2. VRM Humanoid Bone Name mapping (for standard VRMs or custom avatars)
-    if (!bone && this.vrm.humanoid) {
-      const vrmBoneName = SPEECH2MOTION_TO_VRM_HUMANOID[name]
-      if (vrmBoneName) {
-        bone = this.vrm.humanoid.getRawBoneNode(vrmBoneName) ||
-               this.vrm.humanoid.getNormalizedBoneNode(vrmBoneName)
-      }
-    }
-
+    if (!this.vrm || !this.vrm.scene) return null
+    const bone = this.vrm.scene.getObjectByName(name)
     if (bone) this.boneCache.set(name, bone)
     return bone
   }
@@ -610,67 +406,39 @@ export class Speech2MotionManager {
    * Feeds the avatar with calm, gentle breathing idle motion (Ani_standIdle / Record 721).
    */
   async startInfiniteMotion() {
-    if (this.isInfiniteActive && this.isOnline && this.idleTrack) return true
-    if (!this.enabled) this.enabled = true
-    console.log('✨ Speech2Motion: Connecting to mocap pipeline...')
+    if (this.isInfiniteActive) return
+    this.isInfiniteActive = true
+    console.log('✨ Speech2Motion: Starting calm idle breathing pipeline...')
 
-    // Initialize bundled default idle track immediately if not yet parsed
-    if (!this.idleTrack && defaultIdleData) {
-      try {
-        const parsedDefault = this._parseMotionPayload(defaultIdleData)
-        if (parsedDefault) {
-          parsedDefault.is_idle = true
-          this.idleTrack = parsedDefault
-          this.cachedIdleTrack = parsedDefault
-          this.currentTrack = parsedDefault
-          this.isInfiniteActive = true
-          this.isIdleActive = true
-          this.isPlaying = true
-        }
-      } catch (err) {
-        console.warn('Speech2Motion default idle parse error:', err)
-      }
-    }
-
-    try {
-      const initialTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
-      if (initialTrack) {
-        this.cachedIdleTrack = initialTrack
-        this.idleTrack = initialTrack
-        this.currentTrack = initialTrack
-        this.isOnline = true
-        this.isInfiniteActive = true
-        this.isIdleActive = true
-        this.isPlaying = true
-        this._prefetchNextIdle()
-        return true
-      }
-    } catch (err) {
-      console.warn('Speech2Motion startInfiniteMotion failed:', err)
-    }
-
-    if (this.idleTrack) {
-      this.isInfiniteActive = true
-      this.isIdleActive = true
+    // Fetch initial calm standing idle track (Record 721)
+    const initialTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
+    if (initialTrack) {
+      this.currentTrack = initialTrack
+      this.playbackTime = 0
       this.isPlaying = true
+      this.isIdleActive = true
+      this.idleTimer = 0
+      this.idleBlendWeight = 1.0
+      this.transitionElapsed = this.transitionBlendDuration
     }
-    return Boolean(this.idleTrack)
+
+    // Pre-fetch next calm idle track so double-buffer queue is ready
+    this._prefetchNextIdle()
   }
 
   /**
    * Asynchronously pre-fetch the next calm idle track.
    */
   async _prefetchNextIdle() {
-    if (this.isFetchingNext || this.nextTrack) return
+    if (this.isFetchingNext || this.nextTrack || !this.isInfiniteActive || !this.isIdleActive) return
     this.isFetchingNext = true
     try {
       const track = await this._fetchTrack({ isIdle: true, duration: 4.0 })
-      if (track) {
+      if (track && this.isIdleActive) {
         this.nextTrack = track
-        this.cachedIdleTrack = track
       }
     } catch (err) {
-      // Quiet fail
+      console.warn('Speech2Motion pre-fetch idle error:', err)
     } finally {
       this.isFetchingNext = false
     }
@@ -679,11 +447,11 @@ export class Speech2MotionManager {
   /**
    * Extract word timing and motion keywords for text and duration.
    */
-  extractTimingAndKeywords(speechText, duration, excludeOption = null) {
+  extractTimingAndKeywords(speechText, duration) {
     const now = Date.now()
     const activeCooldownKeywords = new Set()
     for (const [kw, ts] of this.recentActionGestures.entries()) {
-      if (now - ts < 8000) {
+      if (now - ts < 3000) {
         activeCooldownKeywords.add(kw)
       } else {
         this.recentActionGestures.delete(kw)
@@ -691,9 +459,6 @@ export class Speech2MotionManager {
     }
     if (this.isActionGestureActive && this.currentActionKeyword) {
       activeCooldownKeywords.add(this.currentActionKeyword)
-    }
-    if (excludeOption === 'all_actions' || excludeOption === 'ALL_ACTIONS') {
-      activeCooldownKeywords.add('ALL_ACTIONS')
     }
 
     return extractSpeechTimingAndKeywords(speechText, duration, activeCooldownKeywords)
@@ -725,9 +490,8 @@ export class Speech2MotionManager {
       isIdle,
       isActionGesture,
     })
-    if (track) {
-      if (isActionGesture) track.isActionGesture = true
-      if (motionKeywords) track.motionKeywords = motionKeywords
+    if (track && isActionGesture) {
+      track.isActionGesture = true
     }
     return track
   }
@@ -747,299 +511,48 @@ export class Speech2MotionManager {
     isActionGesture = false,
   }) {
     const cleanSpeechText = (speechText && speechText !== '...') ? (stripExpressionCommands(speechText) || '...') : '...'
-
-    // Minimum physical durations for action gestures so movements (spin 360, salute, bow, dance, etc.)
-    // complete their full natural execution without being clipped or compressed:
-    const MIN_ACTION_DURATIONS = {
-      '转圈': 4.5,
-      '后空翻': 4.5,
-      '江南style': 6.0,
-      '街舞': 5.0,
-      '玛卡莲娜舞': 5.0,
-      '打招呼': 3.5,
-      '比心': 3.5,
-      '鞠躬': 3.8,
-      '害羞': 4.5,
-      '思考': 4.0,
-      '哭泣': 4.5,
-      '生气': 4.5,
-      '鼓掌': 3.2,
-      '叉腰': 3.5,
-      '开心蹦跳': 3.5,
-      '敬礼': 3.5,
-      '摸摸头': 3.5,
-      '飞吻': 3.5,
-      '挑衅': 3.5,
-      '欢呼': 3.5,
-      '举手': 3.5,
-      '松了一口气': 3.5,
-      '恍然大悟': 3.5,
-      '打瞌睡': 4.0,
-      '无聊': 4.0,
-      '元气体操': 4.5,
-      '比V': 4.2,
-      '双手比V': 3.0,
-      '右手比V': 3.0,
-      'OK手势': 3.2,
-      '兔耳朵手势': 3.5,
-      '开枪': 3.2,
-      '双手抱胸': 3.5,
-      '伸懒腰': 4.5,
-    }
-
-    let effectiveDuration = Math.max(1.0, duration)
-    const hasPhysicalAction = Boolean(
-      isActionGesture ||
-      (motionKeywords && motionKeywords.some((item) => {
-        const kw = Array.isArray(item) ? item[1] : String(item)
-        return PHYSICAL_ACTION_KEYWORDS.has(kw)
-      }))
-    )
-
-    if (hasPhysicalAction && motionKeywords && motionKeywords.length > 0) {
-      for (const kwItem of motionKeywords) {
-        const kw = Array.isArray(kwItem) ? kwItem[1] : String(kwItem)
-        if (!PHYSICAL_ACTION_KEYWORDS.has(kw)) continue
-        const charIdx = Array.isArray(kwItem) ? kwItem[0] : 0
-        let kwTime = 0.0
-        if (speechTime && speechTime.length > 0) {
-          for (const st of speechTime) {
-            if (st[0] <= charIdx) kwTime = st[1]
-            else break
-          }
-        } else if (cleanSpeechText.length > 0) {
-          kwTime = (charIdx / Math.max(1, cleanSpeechText.length)) * duration
-        }
-        const minDur = MIN_ACTION_DURATIONS[kw] || 3.5
-        effectiveDuration = Math.max(effectiveDuration, kwTime + minDur)
-      }
-      // Safety cap: Never allow effectiveDuration to blow up beyond reasonable action length
-      effectiveDuration = Math.min(effectiveDuration, Math.max(duration + 1.2, 5.5))
-    }
-
     const payload = {
-      user_id: 'vrm-web-client',
-      avatar: this.avatarName || 'all',
       speech_text: cleanSpeechText,
-      duration: effectiveDuration,
+      duration: Math.max(1.0, duration),
+      avatar: this.avatarName,
       app_name: 'babylon',
       label_expression: labelExpression,
     }
     if (isIdle) payload.is_idle = true
     if (emotion) payload.emotion = emotion
     if (motionRecordId) payload.motion_record_id = motionRecordId
-    if (motionKeywords && motionKeywords.length > 0) {
+    if (motionKeywords) {
       payload.motion_keywords = Array.isArray(motionKeywords) ? motionKeywords : [motionKeywords]
     }
-    if (speechTime && Array.isArray(speechTime) && speechTime.length > 0) {
+    if (speechTime && Array.isArray(speechTime)) {
       payload.speech_time = speechTime
     }
 
-    // 1. Ensure WebSocket connection is active
-    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-      this._initWebSocket()
-    }
-
-    if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-      // Wait up to 1000ms for WebSocket handshake
-      await new Promise((resolve) => {
-        const timer = setTimeout(resolve, 1000)
-        const onOpen = () => { clearTimeout(timer); resolve() }
-        const onError = () => { clearTimeout(timer); resolve() }
-        this.ws?.addEventListener('open', onOpen, { once: true })
-        this.ws?.addEventListener('error', onError, { once: true })
+    // Fast, reliable HTTP POST via local Vite proxy / direct API endpoint (bypasses 1500ms WS timeout)
+    try {
+      const response = await fetch(this.apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       })
-    }
 
-    // 2. Try persistent low-latency WebSocket first (~95ms response time)
-    // NOTE: Remote server's WebSocket loop processes 1 request at a time sequentially.
-    // If another request is currently in-flight, immediately route to HTTP POST which handles concurrent calls in parallel!
-    if (this.ws && this.ws.readyState === WebSocket.OPEN && !this.wsRequestInProgress) {
-      this.wsRequestInProgress = true
-      try {
-        const requestId = 'req_' + Math.random().toString(36).substring(2) + Date.now()
-        payload.request_id = requestId
-        // Dynamic timeout based on motion duration: min 5000ms, scaling up for long physical actions (e.g. 4.5s spin)
-        const wsTimeout = Math.max(5000, Math.round(effectiveDuration * 1200 + 2000))
-        const data = await this._sendWsRequest(payload, requestId, wsTimeout)
-        if (data && data.ok && (data.data_base64 || data.bytes)) {
-          this.isOnline = true
-          this.consecutiveFailures = 0
-          const track = this._parseMotionPayload(data)
-          track.is_idle = Boolean(isIdle)
-          if (emotion) track.emotion = emotion
-          if (track && hasPhysicalAction) {
-            track.isActionGesture = true
-          }
-          if (track && motionKeywords) {
-            track.motionKeywords = motionKeywords
-          }
-          return track
-        }
-      } catch (wsErr) {
-        if (this.isOnline) {
-          console.log('Speech2Motion WS request note, using HTTP fallback:', wsErr?.message || wsErr)
-        }
-      } finally {
-        this.wsRequestInProgress = false
-      }
-    }
-
-    // 3. Fallback to HTTP POST
-    if (this.apiEndpoint) {
-      try {
-        const response = await fetch(this.apiEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          if (data && data.ok && (data.data_base64 || data.bytes)) {
-            this.isOnline = true
-            this.consecutiveFailures = 0
-            const track = this._parseMotionPayload(data)
-            track.is_idle = Boolean(isIdle)
-            if (emotion) track.emotion = emotion
-            if (track && hasPhysicalAction) {
-              track.isActionGesture = true
-            }
-            if (track && motionKeywords) {
-              track.motionKeywords = motionKeywords
-            }
-            return track
-          }
-        }
-      } catch (httpErr) {
-        // Fall through to protobuf fallback
-      }
-    }
-
-    // 4. Failed across persistent WebSocket and HTTP POST
-    this.consecutiveFailures++
-    if (this.consecutiveFailures >= 2 || !this.isOnline) {
-      this._handleBackendOffline('Speech2Motion backend unreachable')
-    } else {
-      console.warn('Speech2Motion fetch failed, will retry next frame')
-    }
-
-    return null
-  }
-
-  /**
-   * Official dlp3d V3 streaming client. The published backend uses protobuf
-   * bytes over a one-request WebSocket stream; JSON and REST fallbacks cannot
-   * produce a valid motion clip from that service.
-   */
-  _requestOfficialTrack({ speechText, duration, labelExpression, motionKeywords, speechTime }) {
-    return new Promise((resolve, reject) => {
-      const requestId = `s2m_${Math.random().toString(36).slice(2)}${Date.now()}`
-      const protoWsUrl = this.protobufWsEndpoint || 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/streaming_speech2motion/ws'
-      const ws = new WebSocket(protoWsUrl)
-      ws.binaryType = 'arraybuffer'
-      const chunks = []
-      let metadata = null
-      let settled = false
-      const close = () => { try { ws.close() } catch (_) {} }
-      const fail = (error) => {
-        if (settled) return
-        settled = true
-        close()
-        reject(error)
-      }
-      const succeed = (value) => {
-        if (settled) return
-        settled = true
-        close()
-        resolve(value)
-      }
-      const timer = setTimeout(() => fail(new Error('Speech2Motion inference timed out')), 15000)
-      const complete = (value, error = null) => {
-        clearTimeout(timer)
-        if (error) fail(error)
-        else succeed(value)
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}: ${await response.text()}`)
       }
 
-      ws.onopen = () => {
-        ws.send(encodeSpeech2MotionRequest({
-          className: 'StreamingSpeech2MotionV3ChunkStart',
-          requestId,
-          userId: 'vrm-web-client',
-          avatar: this.avatarName,
-          appName: 'babylon',
-          maxFrontExtensionDuration: 1.0,
-          maxRearExtensionDuration: 5.0,
-        }))
-        ws.send(encodeSpeech2MotionRequest({
-          className: 'StreamingSpeech2MotionV3ChunkBody',
-          requestId,
-          duration,
-          speechText,
-          sequenceNumber: 0,
-          speechTime,
-          motionKeywords,
-          labelExpression,
-        }))
-        ws.send(encodeSpeech2MotionRequest({
-          className: 'StreamingSpeech2MotionV3ChunkEnd', requestId }))
+      const data = await response.json()
+      if (!data.ok || !data.data_base64) {
+        throw new Error(data.error || 'Empty motion payload')
       }
-      ws.onmessage = (event) => {
-        try {
-          const response = decodeSpeech2MotionResponse(event.data)
-          if (response.className === 'Speech2MotionV3ResponseChunkStart') {
-            metadata = response
-          } else if (response.className === 'Speech2MotionV3ResponseChunkBody') {
-            chunks.push(response.data)
-          } else if (response.className === 'Speech2MotionV3ResponseChunkEnd') {
-            if (!metadata || !chunks.length) throw new Error('Speech2Motion returned an empty motion stream')
-            const byteLength = chunks.reduce((size, chunk) => size + chunk.length, 0)
-            const bytes = new Uint8Array(byteLength)
-            let offset = 0
-            for (const chunk of chunks) {
-              bytes.set(chunk, offset)
-              offset += chunk.length
-            }
-            complete({
-              bytes,
-              joint_names: metadata.jointNames,
-              blendshape_names: metadata.blendshapeNames,
-              fps: 30,
-              duration,
-            })
-          } else if (response.className === 'LogResponse') {
-            throw new Error(response.log || 'Speech2Motion rejected the request')
-          }
-        } catch (error) {
-          complete(null, error)
-        }
-      }
-      ws.onerror = () => complete(null, new Error('Speech2Motion WebSocket connection failed'))
-      ws.onclose = () => {
-        if (!settled) complete(null, new Error('Speech2Motion closed before completing inference'))
-      }
-    })
-  }
 
-  _handleBackendOffline(reason) {
-    this.isBackendConnected = false
-    this.isFetchingNext = false
-    this._isGeneratingFreshIdle = false
-    if (this.wsReconnectTimer) {
-      clearTimeout(this.wsReconnectTimer)
-      this.wsReconnectTimer = null
-    }
-    if (this.ws) {
-      try { this.ws.close() } catch (_) {}
-      this.ws = null
-    }
-    console.info(`ℹ️ Speech2Motion: Backend connection pending (${reason === 404 ? 'server starting/offline' : reason}). Retrying in 5s...`)
-    
-    if (!this._reconnectTimer) {
-      this._reconnectTimer = setTimeout(() => {
-        this._reconnectTimer = null
-        this.startInfiniteMotion()
-      }, 5000)
+      const track = this._parseMotionPayload(data)
+      if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
+        track.isActionGesture = true
+      }
+      return track
+    } catch (err) {
+      console.warn('Speech2Motion fetch failed:', err)
+      return null
     }
   }
 
@@ -1053,8 +566,6 @@ export class Speech2MotionManager {
 
       ws.onopen = () => {
         console.log('⚡ Speech2Motion WebSocket connected:', this.wsEndpoint)
-        this.isOnline = true
-        this.wsReconnectAttempts = 0
       }
 
       ws.onmessage = (event) => {
@@ -1072,8 +583,8 @@ export class Speech2MotionManager {
         }
       }
 
-      ws.onerror = () => {
-        // Quietly wait for server to come online
+      ws.onerror = (err) => {
+        console.warn('Speech2Motion WS error:', err)
       }
 
       ws.onclose = () => {
@@ -1084,16 +595,16 @@ export class Speech2MotionManager {
         }
         this.wsPendingRequests.clear()
 
-        // Always keep reconnecting every 5s so it locks in immediately when server is ready
-        if (this.enabled && !this.wsReconnectTimer) {
+        // Auto-reconnect after 3s
+        if (!this.wsReconnectTimer) {
           this.wsReconnectTimer = setTimeout(() => {
             this.wsReconnectTimer = null
             this._initWebSocket()
-          }, 5000)
+          }, 3000)
         }
       }
     } catch (e) {
-      // Server not reachable yet
+      console.warn('Speech2Motion WS init error:', e)
     }
   }
 
@@ -1119,81 +630,55 @@ export class Speech2MotionManager {
    * Begin synchronized speech motion playback tied to Web Audio context start time.
    */
   /**
-   * Immediately play an action/speech track on RHS buffer with smooth cubic blend-in (dlp3d.ai pattern).
-   */
-  _playActionTrack(track, isAction = false, keyword = null) {
-    if (!track || !track.frames || track.frames.length === 0) return
-
-    this._clearAppliedBlendshapes()
-    this.actionTrack = track
-    this.currentTrack = track
-    this.rhsPlaybackTime = 0.0
-    this.isPlaying = true
-    this.isActionGestureActive = isAction
-    this.currentActionKeyword = keyword
-    if (keyword) {
-      this.recentActionGestures.set(keyword, Date.now())
-    }
-
-    // Smooth cubic blend-in (dlp3d.ai pattern)
-    this.isBlendingIn = true
-    this.isBlendingOut = false
-    this.blendTimer = (this.jointBlendWeight > 0.01) ? (this.jointBlendWeight * this.BLEND_IN_TIME) : 0.0
-    this._speechSilenceTimer = 0
-  }
-
-  /**
-   * Immediately activate a speech track on RHS buffer with smooth cubic ease-in.
+   * Immediately activate a speech track with smooth Hermite slerp blending from the current pose.
    */
   _activateSpeechTrack(item) {
     if (!item || !item.track || !item.track.frames || item.track.frames.length === 0) return
     const track = item.track
 
+    // Cleanly clear any previously applied mocap blendshapes from the face
     this._clearAppliedBlendshapes()
-    this.actionTrack = track
+
+    // Capture current bone orientations as the blend source for smooth slerp crossfade
+    this.transitionFromPose.clear()
+    for (const [name, bone] of this.boneCache.entries()) {
+      if (bone && bone.quaternion) {
+        this.transitionFromPose.set(name, bone.quaternion.clone())
+      }
+    }
+
     this.currentTrack = track
-    this.rhsPlaybackTime = 0.0
+    this.playbackTime = 0
     this.isPlaying = true
     this.isSpeechActive = true
+    this.isIdleActive = false
+    this.nextTrack = null
+    this.idleBlendWeight = 0.0
     this.speechStartTime = item.startTime
     this.speechAudioDuration = item.duration
+    this.transitionElapsed = 0
+    this.transitionBlendDuration = 0.35 // 350ms smooth continuous crossfade
     this.isActionGestureActive = Boolean(item.isActionGesture || track.isActionGesture)
-    this.currentActionKeyword = null
-    const kwList = track.motionKeywords || item.motionKeywords || item.track?.motionKeywords || []
-    if (this.isActionGestureActive && kwList.length > 0) {
-      this.currentActionKeyword = Array.isArray(kwList[0]) ? kwList[0][1] : kwList[0]
-      this.recentActionGestures.set(this.currentActionKeyword, Date.now())
-    }
     this._speechSilenceTimer = 0
 
-    // Cubic blend-in
-    this.isBlendingIn = true
-    this.isBlendingOut = false
-    this.blendTimer = (this.jointBlendWeight > 0.01) ? (this.jointBlendWeight * this.BLEND_IN_TIME) : 0.0
-
-    // Adaptive speed calculation
+    // Adaptive timing calculation: adjust animation speed (slow or fast) based on audio duration
     const motionDur = track.duration || (track.nFrames / (track.fps || 30.0)) || 0
     const audioDur = item.duration || this.speechAudioDuration || 0
-    if (this.isActionGestureActive) {
-      this.adaptivePlaybackSpeed = 1.0
-      this.motionScaledDuration = motionDur
-      this.isDurationMatched = false
-    } else if (this.adaptiveSpeedEnabled && audioDur > 0.1 && motionDur > 0.1) {
+    if (!this.isActionGestureActive && this.adaptiveSpeedEnabled && audioDur > 0.1 && motionDur > 0.1) {
       const idealSpeed = motionDur / audioDur
-      let clampedSpeed
-      if (idealSpeed > 1.05) {
-        clampedSpeed = 0.85
-      } else {
-        clampedSpeed = Math.max(this.minSpeechSpeed, Math.min(1.00, idealSpeed))
-      }
+      // Bound within human pacing limits (0.55x to 1.30x)
+      const clampedSpeed = Math.max(this.minSpeechSpeed, Math.min(this.maxSpeechSpeed, idealSpeed))
       this.adaptivePlaybackSpeed = clampedSpeed
       this.motionScaledDuration = motionDur / clampedSpeed
-      this.isDurationMatched = Math.abs(clampedSpeed - idealSpeed) < 0.02
+      this.isDurationMatched = Math.abs(clampedSpeed - idealSpeed) < 0.01
+      console.log(`⏱️ Speech2Motion Adaptive Timing: motion=${motionDur.toFixed(2)}s, audio=${audioDur.toFixed(2)}s -> speed=${this.adaptivePlaybackSpeed.toFixed(2)}x (spans ${this.motionScaledDuration.toFixed(2)}s real-time, matched=${this.isDurationMatched})`)
     } else {
-      this.adaptivePlaybackSpeed = this.playbackSpeed || 0.85
+      this.adaptivePlaybackSpeed = this.playbackSpeed || 1.0
       this.motionScaledDuration = motionDur / this.adaptivePlaybackSpeed
       this.isDurationMatched = false
     }
+
+    console.log(`🎬 Speech2Motion: Speech track active (${track.nFrames} frames, ${track.duration.toFixed(2)}s, action=${this.isActionGestureActive}, speed=${this.adaptivePlaybackSpeed.toFixed(2)}x)`)
   }
 
   /**
@@ -1201,29 +686,14 @@ export class Speech2MotionManager {
    */
   _switchNextQueuedSpeechTrack(nowAudioTime) {
     if (!this.speechTrackQueue || this.speechTrackQueue.length === 0) return false
-
-    // If any queued items have already completely finished their audio in the past
-    // while a previous action gesture was playing, drop stale items if a current or future item exists:
-    while (this.speechTrackQueue.length > 1 && nowAudioTime > 0) {
-      const first = this.speechTrackQueue[0]
-      if (nowAudioTime > (first.endTime + 0.10)) {
-        console.log(`🎬 Speech2Motion: Dropping stale past speech track (ended at ${first.endTime.toFixed(2)}s, now=${nowAudioTime.toFixed(2)}s)`)
-        this.speechTrackQueue.shift()
-      } else {
-        break
-      }
-    }
-
     const item = this.speechTrackQueue.shift()
-    if (!item || !item.track) return false
-
     this._activateSpeechTrack(item)
     if (nowAudioTime > 0 && item.startTime > 0 && nowAudioTime >= item.startTime) {
       const elapsed = nowAudioTime - item.startTime
-      const effectiveElapsed = elapsed * (this.adaptivePlaybackSpeed || 1.0)
-      this.rhsPlaybackTime = Math.max(0.0, Math.min(item.track?.duration || 0, effectiveElapsed))
+      const initialProgress = item.duration > 0 ? Math.min(1.0, elapsed / item.duration) : 0
+      this.playbackTime = initialProgress * (item.track?.duration || 0)
     } else {
-      this.rhsPlaybackTime = 0.0
+      this.playbackTime = 0.0
     }
     return true
   }
@@ -1252,46 +722,55 @@ export class Speech2MotionManager {
 
   /**
    * Begin synchronized speech motion playback tied to Web Audio context start time.
+   * If a track is already playing, cleanly enqueues the incoming track onto speechTrackQueue
+   * so sentences sequence smoothly without stuttering, overlapping, or replaying from start.
    */
   startSynchronizedSpeech(track, speechStartTime, audioDuration) {
     if (!track || !track.frames || track.frames.length === 0) return
 
-    const isAction = Boolean(track.isActionGesture)
+    // Crucial requirement: When speaking or playing another motion, idle motion MUST be stopped
+    this.isIdleActive = false
+    this.nextTrack = null // Clear any stale pre-fetched idle track
+    this.idleBlendWeight = 0.0
+    this._speechSilenceTimer = 0
+
+    const isAction = Boolean(track.isActionGesture || (track.motionKeywords && track.motionKeywords.length > 0))
     const item = {
       track,
       startTime: speechStartTime,
       duration: audioDuration,
       endTime: speechStartTime + audioDuration,
       isActionGesture: isAction,
-      motionKeywords: track.motionKeywords || null,
     }
 
     const audioMgr = this.audioManager || (typeof window !== 'undefined' ? window.vrmAudioManager : null)
     const nowAudioTime = (audioMgr && audioMgr.audioCtx) ? audioMgr.audioCtx.currentTime : 0
 
-    // Check if current action gesture is still in physical motion:
-    const isCurrentActionActive = Boolean(this.isActionGestureActive && this.actionTrack)
-    const currentDur = this.actionTrack?.duration || 4.0
-    const isActionStillPlaying = isCurrentActionActive && (this.rhsPlaybackTime < (currentDur - 0.35))
+    // If an action gesture (like spin_360, wave, bow) is actively playing and incoming is not an action,
+    // enqueue it so the action gesture completes smoothly first
+    const hasActiveAction = this.isActionGestureActive && this.currentTrack?.isActionGesture
+    if (hasActiveAction && !isAction && this.playbackTime < (this.currentTrack.duration - 0.4)) {
+      console.log('⏳ Speech2Motion: Preserving active action gesture; queuing incoming speech track')
+      this.speechTrackQueue.push(item)
+      this.speechTrackQueue.sort((a, b) => a.startTime - b.startTime)
+      return
+    }
 
-    const isEarlierSpeechAudioActive = this.isSpeechActive && this.actionTrack &&
-      (nowAudioTime > 0) &&
-      (nowAudioTime < (this.speechStartTime + this.speechAudioDuration - 0.15)) &&
-      (nowAudioTime < (speechStartTime - 0.25))
+    // Only activate immediately if:
+    // 1) No speech track is active (e.g. idle or first utterance), OR
+    // 2) Current track is not speaking, AND nowAudioTime is at or close to speechStartTime (within 350ms)
+    const hasActiveSpeechTrack = this.isSpeechActive && this.currentTrack && !this.currentTrack.is_idle
+    const isTimeToStart = (nowAudioTime <= 0) || (nowAudioTime >= speechStartTime - 0.35)
 
-    const shouldQueue = isActionStillPlaying || (isEarlierSpeechAudioActive && !item.isActionGesture)
-
-    if (!shouldQueue) {
-      if (item.isActionGesture) {
-        this.speechTrackQueue = []
-      }
+    if (!hasActiveSpeechTrack && isTimeToStart) {
       this._activateSpeechTrack(item)
       return
     }
 
+    // Otherwise, enqueue onto speechTrackQueue so it chains seamlessly at the right time
     this.speechTrackQueue.push(item)
     this.speechTrackQueue.sort((a, b) => a.startTime - b.startTime)
-    console.log(`🎬 Speech2Motion: Enqueued speech track (${this.speechTrackQueue.length} in queue, scheduled for ${speechStartTime.toFixed(2)}s, actionBusy=${isActionStillPlaying})`)
+    console.log(`🎬 Speech2Motion: Enqueued speech track (${this.speechTrackQueue.length} in queue, starts at ${speechStartTime.toFixed(2)}s)`)
   }
 
   /**
@@ -1303,22 +782,19 @@ export class Speech2MotionManager {
     this.speechStartTime = 0
     this.speechAudioDuration = 0
     this._speechSilenceTimer = 0
-    if (this.actionTrack) {
-      this.isBlendingIn = false
-      this.isBlendingOut = true
-      this.blendTimer = 0.0
-    }
+    this._transitionToFreshIdle()
   }
 
   /**
    * Transition smoothly to next idle track or generate fresh idle if needed.
    */
   _transitionToNextIdle() {
-    if (this.nextTrack) {
-      this.idleTrack = this.nextTrack
-      this.cachedIdleTrack = this.nextTrack
+    if (this.nextTrack && this.isIdleActive) {
+      this._transitionToTrack(this.nextTrack, false)
       this.nextTrack = null
       this._prefetchNextIdle()
+    } else {
+      this._transitionToFreshIdle()
     }
   }
 
@@ -1327,20 +803,77 @@ export class Speech2MotionManager {
    * Clears old queues, sets up slerp crossfade, and restores calm standing posture.
    */
   async _transitionToFreshIdle() {
-    if (!this.actionTrack) return
-    this.isBlendingIn = false
-    this.isBlendingOut = true
-    this.blendTimer = 0.0
+    if (this._isGeneratingFreshIdle) return
+    this._isGeneratingFreshIdle = true
+
+    console.log('🔄 Speech2Motion: Generating fresh idle track after motion/speech...')
+
+    // Capture instantaneous bone quaternions at the moment of transition
+    this.transitionFromPose.clear()
+    for (const [name, bone] of this.boneCache.entries()) {
+      if (bone && bone.quaternion) {
+        this.transitionFromPose.set(name, bone.quaternion.clone())
+      }
+    }
+
     this.isSpeechActive = false
     this.speechStartTime = 0
     this.speechAudioDuration = 0
+    this.isActionGestureActive = false
+    this.nextTrack = null
+
+    try {
+      const freshTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
+      if (!freshTrack) {
+        console.warn('Speech2Motion: Failed to fetch fresh idle, keeping fallback')
+        this._isGeneratingFreshIdle = false
+        this._lastIdleRetryTime = Date.now()
+        return
+      }
+
+      // If a new speech utterance or action gesture started while fetching, do not overwrite
+      if (this.isSpeechActive || this.isActionGestureActive) {
+        console.log('Speech2Motion: Speech/gesture began during fresh idle fetch; discarding stale idle')
+        this._isGeneratingFreshIdle = false
+        return
+      }
+
+      // Re-capture pose so blending starts exactly from where bones are right now
+      this.transitionFromPose.clear()
+      for (const [name, bone] of this.boneCache.entries()) {
+        if (bone && bone.quaternion) {
+          this.transitionFromPose.set(name, bone.quaternion.clone())
+        }
+      }
+
+      this._clearAppliedBlendshapes()
+      this.currentTrack = freshTrack
+      this.playbackTime = 0
+      this.isPlaying = true
+      this.isIdleActive = true
+      this.transitionElapsed = 0
+      this.transitionBlendDuration = 0.45 // 450ms smooth continuous crossfade
+      this.currentEmotion = 'idle'
+      console.log('✅ Speech2Motion: Fresh idle successfully active and blending')
+
+      // Pre-buffer next idle track
+      this._prefetchNextIdle()
+    } catch (err) {
+      console.warn('Speech2Motion _transitionToFreshIdle error:', err)
+    } finally {
+      this._isGeneratingFreshIdle = false
+    }
   }
 
   /**
    * Trigger full-body mocap emotional posture (shy, sad, angry, happy, surprised, thinking).
    */
   async triggerEmotion(emotionName) {
-    if (!this.enabled) this.enabled = true
+    if (!this.enabled) return null
+    if (this.isActionGestureActive) {
+      console.log(`✨ Speech2Motion: Action gesture in progress, ignoring emotion "${emotionName}"`)
+      return null
+    }
     const lower = (emotionName || '').toLowerCase().trim().replace(/[\s-]+/g, '_')
     const mapped = this.emotionAliasMap[lower] || lower
 
@@ -1358,7 +891,7 @@ export class Speech2MotionManager {
     })
 
     if (track) {
-      this._playActionTrack(track, false, null)
+      this._transitionToTrack(track, false)
     }
     return track
   }
@@ -1367,7 +900,7 @@ export class Speech2MotionManager {
    * Trigger an interactive mocap gesture (wave, heart_fingers, nod, spin, etc.)
    */
   async triggerGesture(gestureName) {
-    if (!this.enabled) this.enabled = true
+    if (!this.enabled) return null
     const lower = (gestureName || '').toLowerCase().trim().replace(/[\s-]+/g, '_')
 
     // If it maps to a body emotion, route directly to triggerEmotion
@@ -1381,44 +914,55 @@ export class Speech2MotionManager {
     const lastTrigger = this.recentActionGestures.get(keyword) || 0
     if (Date.now() - lastTrigger < 4000 && this.isActionGestureActive) {
       console.log(`✨ Speech2Motion: Action gesture "${lower}" already playing, skipping duplicate trigger`)
-      return this.actionTrack || this.currentTrack
+      return this.currentTrack
     }
 
     this.recentActionGestures.set(keyword, Date.now())
     this.currentActionKeyword = keyword
+    this.isFetchingActionGesture = true
+    this.isActionGestureActive = true
 
     console.log(`✨ Speech2Motion: Triggering mocap gesture "${lower}" -> [${keyword}]`)
-    const duration = (keyword === '转圈' || keyword === '后空翻') ? 4.5 : 3.5
+    try {
+      const track = await this._fetchTrack({
+        speechText: keyword,
+        duration: 4.5,
+        labelExpression: 'Happiness | Neutral',
+        motionKeywords: [[0, keyword]],
+        isActionGesture: true,
+      })
 
-    const track = await this._fetchTrack({
-      speechText: '...',
-      duration,
-      labelExpression: 'Happiness | Neutral',
-      motionKeywords: [[0, keyword]],
-      isActionGesture: true,
-    })
-
-    if (track) {
-      track.isActionGesture = true
-      track.motionKeywords = [[0, keyword]]
-      this._playActionTrack(track, true, keyword)
+      if (track) {
+        track.isActionGesture = true
+        this.isActionGestureActive = true
+        this._transitionToTrack(track, false)
+      } else {
+        this.isActionGestureActive = false
+      }
+      return track
+    } catch (err) {
+      this.isActionGestureActive = false
+      console.warn('Speech2Motion triggerGesture error:', err)
+      return null
+    } finally {
+      this.isFetchingActionGesture = false
     }
-    return track
   }
 
   /**
    * Waits until the current action gesture completes its animation.
    * Allows speech utterance queue to hold back spoken words until motion finishes.
    */
-  waitForCurrentActionGesture(timeoutMs = 6000) {
-    if (!this.isActionGestureActive || !this.actionTrack) {
+  waitForCurrentActionGesture(timeoutMs = 8000) {
+    if (!this.isFetchingActionGesture && !this.isActionGestureActive && !this.currentTrack?.isActionGesture) {
       return Promise.resolve()
     }
     return new Promise((resolve) => {
       const startTime = Date.now()
       const check = () => {
         const elapsed = Date.now() - startTime
-        if (!this.isActionGestureActive || !this.isPlaying || elapsed >= timeoutMs) {
+        const isActive = this.isFetchingActionGesture || this.isActionGestureActive || Boolean(this.currentTrack?.isActionGesture && this.isPlaying)
+        if (!isActive || elapsed >= timeoutMs) {
           resolve()
         } else {
           setTimeout(check, 40)
@@ -1452,32 +996,47 @@ export class Speech2MotionManager {
    */
   _transitionToTrack(track, isSpeech = false) {
     if (!track || !track.frames || track.frames.length === 0) return
-    if (track.is_idle) {
-      this.idleTrack = track
-      this.cachedIdleTrack = track
-      this.currentTrack = track
-      return
+
+    // Cleanly clear any previously applied mocap blendshapes from the face
+    this._clearAppliedBlendshapes()
+
+    // Capture current bone orientations as the blend source
+    this.transitionFromPose.clear()
+    for (const [name, bone] of this.boneCache.entries()) {
+      if (bone && bone.quaternion) {
+        this.transitionFromPose.set(name, bone.quaternion.clone())
+      }
     }
-    this._playActionTrack(track, Boolean(track.isActionGesture), track.motionKeywords?.[0]?.[1] || null)
+
+    this.currentTrack = track
+    this.playbackTime = 0
+    this.isPlaying = true
+    this.isSpeechActive = isSpeech
+    this.transitionElapsed = 0
+    this.transitionBlendDuration = 0.55 // 550ms smooth continuous crossfade
+
+    if (!track.is_idle) {
+      this.isIdleActive = false
+      this.nextTrack = null
+      this.idleBlendWeight = 0.0
+    } else {
+      this.isIdleActive = true
+    }
   }
 
   /**
    * Parse the binary flat bytes payload into an indexed keyframe track with skirt clearance.
    */
   _parseMotionPayload(data) {
-    let bytes
-    if (data.bytes instanceof Uint8Array) {
-      bytes = data.bytes
-    } else {
-      const binaryString = atob(data.data_base64)
-      bytes = new Uint8Array(binaryString.length)
-      for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i)
+    const binaryString = atob(data.data_base64)
+    const len = binaryString.length
+    const bytes = new Uint8Array(len)
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
     }
 
-    // A response may start at a byte offset within an ArrayBuffer. Copy only
-    // when needed so Float32Array remains correctly aligned on every browser.
-    if (bytes.byteOffset % 4 !== 0) bytes = bytes.slice()
-    const floatView = new Float32Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 4))
+    const floatView = new Float32Array(bytes.buffer)
+    const nFrames = data.n_frames
     const fps = data.fps || 30.0
     const jointNames = data.joint_names || []
     const blendshapeNames = data.blendshape_names || []
@@ -1486,10 +1045,6 @@ export class Speech2MotionManager {
 
     // Row stride: nJoints * 9 (rotations) + 3 (root pos) + 3 (cutoff marks) + nBlendshapes
     const stride = nJoints * 9 + 6 + nBlendshapes
-    const nFrames = data.n_frames || Math.floor(floatView.length / stride)
-    if (!nJoints || !nFrames || floatView.length < nFrames * stride) {
-      throw new Error('Speech2Motion returned an invalid motion frame layout')
-    }
 
     const frames = []
 
@@ -1584,302 +1139,264 @@ export class Speech2MotionManager {
   }
 
   /**
-   * Sample keyframe pair and interpolation alpha from a motion track at a specific time.
-   */
-  _sampleTrackAt(track, time) {
-    if (!track || !track.frames || track.frames.length === 0) return null
-    const totalDuration = track.duration || (track.frames.length / (track.fps || 30.0))
-    if (!totalDuration || totalDuration <= 0) return null
-    const clampedTime = Math.max(0, Math.min(totalDuration, time))
-    const exactFrame = Math.min(track.frames.length - 1, Math.max(0, clampedTime * (track.fps || 30.0)))
-    const frameIndexA = Math.floor(exactFrame)
-    const frameIndexB = Math.min(track.frames.length - 1, frameIndexA + 1)
-    const alpha = exactFrame - frameIndexA
-    return {
-      frameA: track.frames[frameIndexA],
-      frameB: track.frames[frameIndexB],
-      alpha,
-    }
-  }
-
-  /**
    * Called on every animation tick from AnimationManager.update(delta).
-   * Implements dlp3d.ai continuous dual-timeline blending:
-   * LHS = Continuous looping idle animation buffer (never stops, never freezes).
-   * RHS = Streamed action/speech animation buffer.
-   * jointBlendWeight = cubic eased weight blending between LHS and RHS.
    */
   update(delta) {
-    if (!this.enabled || !this.vrm) return
-
-    // Ensure LHS idle track is always available (fallback to cached or default)
-    if (!this.idleTrack && this.cachedIdleTrack) {
-      this.idleTrack = this.cachedIdleTrack
+    if (!this.currentTrack || !this.vrm) {
+      const now = Date.now()
+      if (this.isInfiniteActive && !this.isFetchingNext && !this.isSpeechActive && !this.isActionGestureActive && !this._isGeneratingFreshIdle && (now - (this._lastIdleRetryTime || 0) > 3000)) {
+        this._lastIdleRetryTime = now
+        this._transitionToFreshIdle()
+      }
+      return
     }
-    if (!this.idleTrack) return
+
+    const totalDuration = this.currentTrack.duration
+    if (!totalDuration || totalDuration <= 0) return
 
     const safeDelta = Math.min(delta, 0.05)
+
+    // Update transition elapsed timer
+    if (this.transitionElapsed < this.transitionBlendDuration) {
+      this.transitionElapsed += safeDelta
+    }
+
+    // Dynamic idle blend weight:
+    // Smoothly ramps up to 1.0 during calm standing idle; quickly fades to 0.0 during speech or action
+    if (this.isIdleActive && !this.isSpeechActive && !this.isActionGestureActive) {
+      this.idleBlendWeight = Math.min(1.0, this.idleBlendWeight + safeDelta * 2.0)
+      this.idleTimer += safeDelta
+    } else {
+      this.idleBlendWeight = Math.max(0.0, this.idleBlendWeight - safeDelta * 3.0)
+    }
+
+    // Check if speech audio is actively playing or scheduled from audioManager
     const audioMgr = this.audioManager || (typeof window !== 'undefined' ? window.vrmAudioManager : null)
     const nowAudioTime = (audioMgr && audioMgr.audioCtx) ? audioMgr.audioCtx.currentTime : 0
-    const isSpeakingAudio = Boolean(audioMgr && audioMgr.isPlaying && audioMgr.audioCtx && this.speechStartTime > 0)
-    const hasScheduledAudio = Boolean(audioMgr && audioMgr.audioCtx && (audioMgr.nextStartTime > (audioMgr.audioCtx.currentTime + 0.05)))
+    const isSpeakingAudio = audioMgr && audioMgr.isPlaying && audioMgr.audioCtx && this.speechStartTime > 0
+    const hasScheduledAudio = audioMgr && audioMgr.audioCtx && (audioMgr.nextStartTime > (audioMgr.audioCtx.currentTime + 0.05))
 
-    // ==========================================
-    // 1. ADVANCE LHS (Idle Buffer) - Continuous Loop
-    // ==========================================
-    const lhsDuration = this.idleTrack.duration || (this.idleTrack.frames.length / (this.idleTrack.fps || 30.0)) || 4.0
-    this.lhsPlaybackTime += safeDelta * this.idlePlaybackSpeed
-    this.idleTimer += safeDelta
+    const isActionTrack = this.isActionGestureActive || Boolean(this.currentTrack?.isActionGesture)
 
-    // Pre-buffer next idle track 1.5s before end of current idle
-    if (this.lhsPlaybackTime >= (lhsDuration - 1.5) && !this.nextTrack && !this.isFetchingNext && this.isInfiniteActive) {
+    // Seamlessly transition into the next queued speech track when it's time
+    if (this.speechTrackQueue.length > 0 && !isActionTrack) {
+      const nextItem = this.speechTrackQueue[0]
+      const shouldSwitch = (nowAudioTime > 0 && nowAudioTime >= (nextItem.startTime - 0.35)) ||
+                           (nowAudioTime <= 0 && this.playbackTime >= totalDuration)
+      if (shouldSwitch) {
+        if (this._switchNextQueuedSpeechTrack(nowAudioTime)) return
+      }
+    }
+
+    if (isActionTrack) {
+      // ACTION GESTURES (e.g. spin, wave, salute, bow, cheer):
+      // Must advance at physical motion speed (1.0x) to complete the full physical movement!
+      // Must NOT be clamped to short audio duration or aborted by speech silence timer!
+      const speed = this.playbackSpeed || 1.0
+      this.playbackTime += safeDelta * speed
+    } else if (this.isSpeechActive && (isSpeakingAudio || hasScheduledAudio)) {
+      this._speechSilenceTimer = 0
+      // Hardware-synced to the audio output clock
+      const audioElapsed = audioMgr.audioCtx.currentTime - this.speechStartTime
+      const scaledDuration = this.motionScaledDuration || totalDuration
+
+      if (audioElapsed < 0) {
+        // Holding during lead-in crossfade before audio start:
+        // Hold frame 0 while Hermite slerp blends from previous pose into Track start pose!
+        this.playbackTime = 0.0
+      } else if (audioElapsed <= scaledDuration) {
+        // Continuous, smooth hardware-locked progression matching spoken audio
+        const progress = Math.max(0.0, Math.min(1.0, audioElapsed / Math.max(0.001, scaledDuration)))
+        const targetPlaybackTime = progress * totalDuration
+
+        // Smoothly glide toward targetPlaybackTime locked to the audio clock
+        const drift = targetPlaybackTime - this.playbackTime
+        if (Math.abs(drift) > 0.20 || drift < -0.01) {
+          this.playbackTime = targetPlaybackTime
+        } else {
+          this.playbackTime = THREE.MathUtils.lerp(this.playbackTime, targetPlaybackTime, Math.min(1.0, safeDelta * 22.0))
+        }
+        this.playbackTime = Math.max(0.0, Math.min(totalDuration, this.playbackTime))
+      } else {
+        // Speech audio is longer than track's scaled duration: check if next item is queued
+        if (this.speechTrackQueue.length > 0 && (nowAudioTime <= 0 || nowAudioTime >= this.speechTrackQueue[0].startTime - 0.35)) {
+          if (this._switchNextQueuedSpeechTrack(nowAudioTime)) return
+        }
+
+        // CRITICAL FIX: The motion gesture has reached its natural conclusion.
+        // DO NOT loop the tail over and over again!
+        // Repeating a gesture over and over creates the unnatural "overlapping / repetitive" feeling.
+        // Instead, hold the expressive resolved end-pose at the final frame,
+        // supported by natural respiration and gaze micro-movement, until audio ends or next track starts!
+        this.playbackTime = Math.max(0.0, totalDuration - 0.001)
+      }
+    } else if (this.isSpeechActive) {
+      if (this.speechTrackQueue.length > 0 && (nowAudioTime <= 0 || nowAudioTime >= this.speechTrackQueue[0].startTime - 0.35)) {
+        if (this._switchNextQueuedSpeechTrack(nowAudioTime)) return
+      }
+      // Audio stream paused or finished between sentences; debounce before returning to idle
+      this._speechSilenceTimer = (this._speechSilenceTimer || 0) + safeDelta
+      if (this.playbackTime < totalDuration) {
+        this.playbackTime = Math.min(totalDuration, this.playbackTime + safeDelta * (this.adaptivePlaybackSpeed || this.playbackSpeed))
+      } else {
+        this.playbackTime = Math.max(0.0, totalDuration - 0.001)
+      }
+
+      // Only transition to idle after sustained silence (0.6s) when no more speech is incoming and no audio scheduled
+      if (this._speechSilenceTimer >= 0.6 && !hasScheduledAudio && this.speechTrackQueue.length === 0) {
+        this.isSpeechActive = false
+        this.speechStartTime = 0
+        this.speechAudioDuration = 0
+        this._speechSilenceTimer = 0
+        this._transitionToFreshIdle()
+        return
+      }
+    } else {
+      // Natural human mocap speed: calm for idle, natural for gestures
+      const speed = this.currentTrack.is_idle ? this.idlePlaybackSpeed : this.playbackSpeed
+      this.playbackTime += safeDelta * speed
+    }
+
+    // Pre-buffer next idle track 1.5 seconds before current track ends ONLY when in idle
+    if (this.isIdleActive && this.playbackTime >= totalDuration - 1.5 && !this.nextTrack && !this.isFetchingNext && this.isInfiniteActive) {
       this._prefetchNextIdle()
     }
 
-    if (this.lhsPlaybackTime >= lhsDuration) {
-      if (this.nextTrack) {
-        this.idleTrack = this.nextTrack
-        this.cachedIdleTrack = this.nextTrack
-        this.nextTrack = null
-        this.lhsPlaybackTime = this.lhsPlaybackTime % (this.idleTrack.duration || 4.0)
-        this._prefetchNextIdle()
-      } else {
-        this.lhsPlaybackTime = this.lhsPlaybackTime % lhsDuration
+    // When current track ends:
+    if (this.playbackTime >= totalDuration) {
+      this.isActionGestureActive = false
+      if (this.speechTrackQueue.length > 0 && (nowAudioTime <= 0 || nowAudioTime >= this.speechTrackQueue[0].startTime - 0.35)) {
+        if (this._switchNextQueuedSpeechTrack(nowAudioTime)) return
       }
-    }
-
-    // ==========================================
-    // 2. ADVANCE RHS (Action/Speech Buffer)
-    // ==========================================
-    if (this.actionTrack) {
-      const rhsDuration = this.actionTrack.duration || (this.actionTrack.frames.length / (this.actionTrack.fps || 30.0)) || 4.0
-      const isAction = Boolean(this.isActionGestureActive || this.actionTrack.isActionGesture)
-
-      // Seamlessly switch to the next queued speech track when appropriate
-      const isActionComplete = !isAction || (this.rhsPlaybackTime >= (rhsDuration - 0.35))
-      if (this.speechTrackQueue.length > 0 && isActionComplete) {
-        const nextItem = this.speechTrackQueue[0]
-        const shouldSwitch = (nowAudioTime > 0 && nowAudioTime >= (nextItem.startTime - 0.04)) ||
-                             (nowAudioTime <= 0 && this.rhsPlaybackTime >= rhsDuration)
-        if (shouldSwitch) {
-          this._switchNextQueuedSpeechTrack(nowAudioTime)
-        }
-      }
-
-      if (this.isBlendingOut) {
-        // Holding final keyframe while smoothly easing out into continuous LHS idle
-        this.rhsPlaybackTime = Math.min(rhsDuration, this.rhsPlaybackTime)
-      } else if (this.isSpeechActive && (isSpeakingAudio || hasScheduledAudio)) {
-        this._speechSilenceTimer = 0
-        const audioElapsed = audioMgr.audioCtx.currentTime - this.speechStartTime
-
-        if (audioElapsed < 0) {
-          this.rhsPlaybackTime = 0.0
+      if (this.currentTrack.is_idle) {
+        if (this.nextTrack) {
+          // Seamlessly switch to next track
+          this._transitionToTrack(this.nextTrack, false)
+          this.nextTrack = null
+          this._prefetchNextIdle()
         } else {
-          const baseSpeed = isAction ? 1.00 : (this.adaptivePlaybackSpeed || 0.85)
-          let targetPlaybackTime
-          if (isAction) {
-            targetPlaybackTime = Math.min(rhsDuration, audioElapsed)
-          } else {
-            const scaledDuration = this.motionScaledDuration || rhsDuration
-            const progress = Math.max(0.0, Math.min(1.0, audioElapsed / Math.max(0.001, scaledDuration)))
-            targetPlaybackTime = progress * rhsDuration
+          // Seamlessly loop the calm breathing idle without stuttering
+          this.playbackTime = this.playbackTime % totalDuration
+          // Slerp across seam for complete continuity
+          this.transitionFromPose.clear()
+          for (const [name, bone] of this.boneCache.entries()) {
+            if (bone && bone.quaternion) {
+              this.transitionFromPose.set(name, bone.quaternion.clone())
+            }
           }
-
-          const drift = targetPlaybackTime - this.rhsPlaybackTime
-          let speedModulation = 0.0
-          if (Math.abs(drift) > 0.02) {
-            speedModulation = THREE.MathUtils.clamp(drift * 0.75, -0.10, +0.10)
-          }
-          const effectiveSpeed = Math.max(0.55, Math.min(1.05, baseSpeed * (1.0 + speedModulation)))
-          this.rhsPlaybackTime = Math.min(rhsDuration, this.rhsPlaybackTime + safeDelta * effectiveSpeed)
+          this.transitionElapsed = 0
+          this.transitionBlendDuration = 0.40
         }
-      } else if (this.isSpeechActive) {
-        // Audio stream between sentences or finishing
-        this.rhsPlaybackTime = Math.min(rhsDuration, this.rhsPlaybackTime + safeDelta * (this.adaptivePlaybackSpeed || this.playbackSpeed))
-        this._speechSilenceTimer = (this._speechSilenceTimer || 0) + safeDelta
-
-        if (this._speechSilenceTimer >= 0.8 && !hasScheduledAudio && !isSpeakingAudio && this.speechTrackQueue.length === 0) {
-          // Finished speech - begin cubic blend out to idle
-          this.isBlendingIn = false
-          this.isBlendingOut = true
-          this.blendTimer = 0.0
-          this.isSpeechActive = false
-        }
+      } else if ((this.isSpeechActive && (isSpeakingAudio || hasScheduledAudio)) || this.speechTrackQueue.length > 0) {
+        // Still in active speech playback: hold final expressive pose calmly
+        this.playbackTime = Math.max(0.0, totalDuration - 0.001)
+      } else if (this.isInfiniteActive) {
+        // Finished a gesture/emotion/speech motion: generate fresh idle!
+        this._transitionToFreshIdle()
+        return
       } else {
-        // Interactive Action Gesture or Emotion mocap
-        const speed = isAction ? 1.0 : this.playbackSpeed
-        this.rhsPlaybackTime += safeDelta * speed
-
-        if (this.rhsPlaybackTime >= rhsDuration) {
-          // Gesture completed - begin cubic blend out to idle
-          this.isBlendingIn = false
-          this.isBlendingOut = true
-          this.blendTimer = 0.0
-          this.isActionGestureActive = false
-          this.currentActionKeyword = null
-        }
+        this.isPlaying = false
+        return
       }
     }
 
-    // Keep legacy playbackTime synchronized
-    this.playbackTime = this.actionTrack ? this.rhsPlaybackTime : this.lhsPlaybackTime
-    this.currentTrack = this.actionTrack || this.idleTrack
+    // Keyframe interpolation within current track
+    const { frames, fps } = this.currentTrack
+    const exactFrame = Math.min(frames.length - 1, Math.max(0, this.playbackTime * fps))
+    const frameIndexA = Math.floor(exactFrame)
+    const frameIndexB = Math.min(frames.length - 1, frameIndexA + 1)
+    const alpha = exactFrame - frameIndexA
 
-    // ==========================================
-    // 3. COMPUTE CUBIC BLEND WEIGHT (dlp3d.ai)
-    // ==========================================
-    if (this.isBlendingIn) {
-      this.blendTimer += safeDelta
-      if (this.blendTimer >= this.BLEND_IN_TIME) {
-        this.isBlendingIn = false
-        this.blendTimer = this.BLEND_IN_TIME
-        this.jointBlendWeight = 1.0
+    const frameA = frames[frameIndexA]
+    const frameB = frames[frameIndexB]
+    if (!frameA || !frameB) return
+
+    // Dynamic transition blend alpha (slerping from previous track's ending pose)
+    const inTransition = this.transitionElapsed < this.transitionBlendDuration
+    const transitionAlpha = inTransition
+      ? this._smoothstep(this.transitionElapsed / this.transitionBlendDuration)
+      : 1.0
+
+    // 1. Apply Joint Rotations
+    for (const [jointName, quatA] of frameA.rotations.entries()) {
+      if (jointName === 'Root') continue
+      const bone = this.getBone(jointName)
+      if (!bone) continue
+
+      const quatB = frameB.rotations.get(jointName) || quatA
+
+      // Interpolate keyframes of current track
+      this._resultQuat.copy(quatA).slerp(quatB, alpha)
+
+      if (inTransition && this.transitionFromPose.has(jointName)) {
+        // Blend seamlessly from the previous track's final pose
+        const fromQuat = this.transitionFromPose.get(jointName)
+        bone.quaternion.copy(fromQuat).slerp(this._resultQuat, transitionAlpha)
       } else {
-        this.jointBlendWeight = easeInOutCubic(this.blendTimer / this.BLEND_IN_TIME)
-      }
-    } else if (this.isBlendingOut) {
-      this.blendTimer += safeDelta
-      if (this.blendTimer >= this.BLEND_OUT_TIME) {
-        this.isBlendingOut = false
-        this.blendTimer = this.BLEND_OUT_TIME
-        this.jointBlendWeight = 0.0
-        this.actionTrack = null
-        this.isActionGestureActive = false
-        this.currentActionKeyword = null
-      } else {
-        this.jointBlendWeight = 1.0 - easeInOutCubic(this.blendTimer / this.BLEND_OUT_TIME)
-      }
-    } else if (this.actionTrack) {
-      this.jointBlendWeight = 1.0
-    } else {
-      this.jointBlendWeight = 0.0
-    }
-
-    this.idleBlendWeight = Math.max(0.0, 1.0 - this.jointBlendWeight)
-
-    // ==========================================
-    // 4. SAMPLE DUAL TIMELINES AND BLEND BONES
-    // ==========================================
-    const lhsSample = this._sampleTrackAt(this.idleTrack, this.lhsPlaybackTime)
-    const rhsSample = (this.actionTrack && this.jointBlendWeight > 0.0001)
-      ? this._sampleTrackAt(this.actionTrack, this.rhsPlaybackTime)
-      : null
-
-    if (lhsSample) {
-      for (const [jointName, quatA] of lhsSample.frameA.rotations.entries()) {
-        if (jointName === 'Root') continue
-        const bone = this.getBone(jointName)
-        if (!bone) continue
-
-        // Sample LHS
-        const quatB = lhsSample.frameB.rotations.get(jointName) || quatA
-        this._tempQuatL.copy(quatA).slerp(quatB, lhsSample.alpha)
-
-        // Sample RHS and Slerp Blend (dlp3d.ai pattern)
-        if (rhsSample && this.jointBlendWeight > 0.0001) {
-          const rhsQuatA = rhsSample.frameA.rotations.get(jointName) || this._tempQuatL
-          const rhsQuatB = rhsSample.frameB.rotations.get(jointName) || rhsQuatA
-          this._tempQuatR.copy(rhsQuatA).slerp(rhsQuatB, rhsSample.alpha)
-          this._resultQuat.copy(this._tempQuatL).slerp(this._tempQuatR, this.jointBlendWeight)
-        } else {
-          this._resultQuat.copy(this._tempQuatL)
-        }
-
         bone.quaternion.copy(this._resultQuat)
       }
     }
 
-    // ==========================================
-    // 5. PROCEDURAL OVERLAYS & LAYERS
-    // ==========================================
+    // Layer subtle organic idle standing movements (faded out when speaking or in action gesture):
     this._applyIdleNeckMovement(safeDelta)
     this._applyIdleHandMovements(safeDelta)
-    this._applyGestureHandPoses(safeDelta)
+
+    // Organic idle head shifts & natural gaze wander (suppressed during speech/action to maintain eye contact):
     this._applyNaturalHeadAndGaze(safeDelta)
-    this._applySpinMotion(safeDelta)
 
-    // ==========================================
-    // 6. BLEND EXPRESSIONS & BLENDSHAPES
-    // ==========================================
-    this._applyBlendedMorphs(lhsSample, rhsSample, this.jointBlendWeight)
-  }
+    // 2. Apply Blendshapes
+    if (this.vrm.expressionManager) {
+      const em = this.vrm.expressionManager
+      const isSpeakingAudio = audioMgr && audioMgr.isPlaying && this.isSpeechActive
+      // When speaking, mouth visemes are driven by Audio2Face neural lip-sync; do not clash
+      const mouthMorphs = new Set([
+        'い', 'え', 'ん', 'あ', 'う', 'お', 'ワ', 'あ２', '口角上げ', '口横広げ', '口横狭め', 'mouth_close',
+        'aa', 'ih', 'ou', 'ee', 'oh', 'jawOpen', 'mouthFunnel', 'mouthPucker',
+        'smirk', 'にやり', 'にやり２', 'smile', 'にっこり', 'cat_mouth', 'ω', 'tongue', 'ぺろっ', 'tehepero', 'てへぺろ',
+        'serious', '真面目', 'laugh', '笑い'
+      ])
 
-  /**
-   * Apply blended facial morph targets across LHS and RHS animation tracks.
-   */
-  _applyBlendedMorphs(lhsSample, rhsSample, blendWeight) {
-    if (!this.vrm?.expressionManager) return
-    const em = this.vrm.expressionManager
-    const audioMgr = this.audioManager || (typeof window !== 'undefined' ? window.vrmAudioManager : null)
-    const isSpeakingAudio = Boolean(audioMgr?.isPlaying && this.isSpeechActive)
+      const currentFrameMorphs = new Set([...frameA.blendshapes.keys(), ...frameB.blendshapes.keys()])
+      const allToProcess = new Set([...currentFrameMorphs, ...this.activeAppliedMorphs])
 
-    const mouthMorphs = new Set([
-      'い', 'え', 'ん', 'あ', 'う', 'お', 'ワ', 'あ２', '口角上げ', '口横広げ', '口横狭め', 'mouth_close',
-      'aa', 'ih', 'ou', 'ee', 'oh', 'jawOpen', 'mouthFunnel', 'mouthPucker',
-      'smirk', 'にやり', 'にやり２', 'smile', 'にっこり', 'cat_mouth', 'ω', 'tongue', 'ぺろっ', 'tehepero', 'てへぺろ',
-      'serious', '真面目', 'laugh', '笑い'
-    ])
+      for (const morphName of allToProcess) {
+        if (isSpeakingAudio && mouthMorphs.has(morphName)) {
+          let resolved = this.resolvedMorphMap.get(morphName)
+          if (resolved === undefined) {
+            resolved = em.getExpression(morphName) ? morphName : null
+            this.resolvedMorphMap.set(morphName, resolved)
+          }
+          if (resolved && this.activeAppliedMorphs.has(morphName)) {
+            try {
+              em.setValue(resolved, 0)
+            } catch (e) {}
+            this.activeAppliedMorphs.delete(morphName)
+          }
+          continue
+        }
 
-    const currentMorphs = new Set()
-    if (lhsSample) {
-      for (const k of lhsSample.frameA.blendshapes.keys()) currentMorphs.add(k)
-      for (const k of lhsSample.frameB.blendshapes.keys()) currentMorphs.add(k)
-    }
-    if (rhsSample && blendWeight > 0.001) {
-      for (const k of rhsSample.frameA.blendshapes.keys()) currentMorphs.add(k)
-      for (const k of rhsSample.frameB.blendshapes.keys()) currentMorphs.add(k)
-    }
-
-    const allToProcess = new Set([...currentMorphs, ...this.activeAppliedMorphs])
-
-    for (const morphName of allToProcess) {
-      if (isSpeakingAudio && mouthMorphs.has(morphName)) {
         let resolved = this.resolvedMorphMap.get(morphName)
         if (resolved === undefined) {
-          resolved = em.getExpression(morphName) ? morphName : null
+          if (this.animationManager?._getValidExpressionName) {
+            resolved = this.animationManager._getValidExpressionName(morphName) || null
+          } else {
+            resolved = em.getExpression(morphName) ? morphName : null
+          }
           this.resolvedMorphMap.set(morphName, resolved)
         }
-        if (resolved && this.activeAppliedMorphs.has(morphName)) {
-          try { em.setValue(resolved, 0) } catch (e) {}
+        if (!resolved) continue
+
+        const valA = frameA.blendshapes.get(morphName) || 0
+        const valB = frameB.blendshapes.get(morphName) || 0
+        const targetVal = THREE.MathUtils.lerp(valA, valB, alpha)
+
+        if (targetVal > 0.01) {
+          em.setValue(resolved, targetVal)
+          this.activeAppliedMorphs.add(morphName)
+        } else if (this.activeAppliedMorphs.has(morphName)) {
+          em.setValue(resolved, 0)
           this.activeAppliedMorphs.delete(morphName)
         }
-        continue
-      }
-
-      let resolved = this.resolvedMorphMap.get(morphName)
-      if (resolved === undefined) {
-        if (this.animationManager?._getValidExpressionName) {
-          resolved = this.animationManager._getValidExpressionName(morphName) || null
-        } else {
-          resolved = em.getExpression(morphName) ? morphName : null
-        }
-        this.resolvedMorphMap.set(morphName, resolved)
-      }
-      if (!resolved) continue
-
-      let valLHS = 0
-      if (lhsSample) {
-        const vA = lhsSample.frameA.blendshapes.get(morphName) || 0
-        const vB = lhsSample.frameB.blendshapes.get(morphName) || 0
-        valLHS = THREE.MathUtils.lerp(vA, vB, lhsSample.alpha)
-      }
-
-      let valRHS = 0
-      if (rhsSample && blendWeight > 0.001) {
-        const vA = rhsSample.frameA.blendshapes.get(morphName) || 0
-        const vB = rhsSample.frameB.blendshapes.get(morphName) || 0
-        valRHS = THREE.MathUtils.lerp(vA, vB, rhsSample.alpha)
-      }
-
-      const targetVal = THREE.MathUtils.lerp(valLHS, valRHS, blendWeight)
-
-      if (targetVal > 0.01) {
-        em.setValue(resolved, targetVal)
-        this.activeAppliedMorphs.add(morphName)
-      } else if (this.activeAppliedMorphs.has(morphName)) {
-        em.setValue(resolved, 0)
-        this.activeAppliedMorphs.delete(morphName)
       }
     }
   }
@@ -2024,133 +1541,6 @@ export class Speech2MotionManager {
   }
 
   /**
-   * Layer procedural hand & finger shaping during action gestures.
-   * Gives iconic anime clarity to Peace Sign (比V), Thumbs Up (竖起拇指),
-   * OK Sign (OK手势), and Finger Heart (比心).
-   */
-  _applyGestureHandPoses(delta) {
-    const isAction = Boolean(this.isActionGestureActive || this.actionTrack?.isActionGesture || this.currentTrack?.isActionGesture)
-    if (!isAction && !this._gestureHandWeight) return
-
-    const kw = this.currentActionKeyword || ''
-    const isPeaceSign = (kw === '比V' || kw === '双手比V' || kw === '右手比V')
-    const isThumbsUp = (kw === '竖起拇指')
-    const isOkSign = (kw === 'OK手势')
-    const isHeartFingers = (kw === '比心')
-
-    const totalDur = this.actionTrack?.duration || this.currentTrack?.duration || 4.0
-    const pTime = this.rhsPlaybackTime || this.playbackTime || 0
-
-    // Compute target weight (0.0 to 1.0) with smooth ease-in, hold, and ease-out:
-    let targetWeight = 0.0
-    if (isAction && (isPeaceSign || isThumbsUp || isOkSign || isHeartFingers)) {
-      const leadIn = 0.35
-      const leadOut = 0.45
-      if (pTime < leadIn) {
-        targetWeight = this._smoothstep(pTime / leadIn)
-      } else if (pTime < totalDur - leadOut) {
-        targetWeight = 1.0
-      } else {
-        targetWeight = 1.0 - this._smoothstep((pTime - (totalDur - leadOut)) / leadOut)
-      }
-    }
-
-    if (!this._gestureHandWeight) this._gestureHandWeight = 0.0
-    this._gestureHandWeight = THREE.MathUtils.lerp(this._gestureHandWeight, targetWeight, delta * 12.0)
-    const w = this._gestureHandWeight
-    if (w < 0.005) return
-
-    if (!this._gestureHandEuler) this._gestureHandEuler = new THREE.Euler(0, 0, 0, 'XYZ')
-    if (!this._gestureHandQuat) this._gestureHandQuat = new THREE.Quaternion()
-
-    const applyBoneRot = (boneName, x, y, z) => {
-      const bone = this.getBone(boneName)
-      if (!bone) return
-      this._gestureHandEuler.set(x * w, y * w, z * w, 'XYZ')
-      this._gestureHandQuat.setFromEuler(this._gestureHandEuler)
-      bone.quaternion.multiply(this._gestureHandQuat)
-    }
-
-    if (isPeaceSign) {
-      // Right hand Peace Sign (V-Sign):
-      // Index & Middle straight with subtle V-spread
-      applyBoneRot('IndexFinger1_R', -0.04, 0, 0.12)
-      applyBoneRot('IndexFinger2_R', 0, 0, 0)
-      applyBoneRot('IndexFinger3_R', 0, 0, 0)
-      applyBoneRot('MiddleFinger1_R', -0.04, 0, -0.12)
-      applyBoneRot('MiddleFinger2_R', 0, 0, 0)
-      applyBoneRot('MiddleFinger3_R', 0, 0, 0)
-
-      // Ring & Pinky curled tightly into palm
-      applyBoneRot('RingFinger1_R', -1.25, 0, 0)
-      applyBoneRot('RingFinger2_R', -1.35, 0, 0)
-      applyBoneRot('RingFinger3_R', -1.10, 0, 0)
-      applyBoneRot('LittleFinger1_R', -1.25, 0, 0)
-      applyBoneRot('LittleFinger2_R', -1.35, 0, 0)
-      applyBoneRot('LittleFinger3_R', -1.10, 0, 0)
-
-      // Thumb folded across curled ring finger
-      applyBoneRot('Thumb0_R', -0.35, 0.20, -0.15)
-      applyBoneRot('Thumb1_R', -0.60, 0, 0)
-      applyBoneRot('Thumb2_R', -0.50, 0, 0)
-
-      // If double peace sign, also apply to left hand
-      if (kw === '双手比V') {
-        applyBoneRot('IndexFinger1_L', -0.04, 0, -0.12)
-        applyBoneRot('IndexFinger2_L', 0, 0, 0)
-        applyBoneRot('IndexFinger3_L', 0, 0, 0)
-        applyBoneRot('MiddleFinger1_L', -0.04, 0, 0.12)
-        applyBoneRot('MiddleFinger2_L', 0, 0, 0)
-        applyBoneRot('MiddleFinger3_L', 0, 0, 0)
-        applyBoneRot('RingFinger1_L', -1.25, 0, 0)
-        applyBoneRot('RingFinger2_L', -1.35, 0, 0)
-        applyBoneRot('RingFinger3_L', -1.10, 0, 0)
-        applyBoneRot('LittleFinger1_L', -1.25, 0, 0)
-        applyBoneRot('LittleFinger2_L', -1.35, 0, 0)
-        applyBoneRot('LittleFinger3_L', -1.10, 0, 0)
-        applyBoneRot('Thumb0_L', -0.35, -0.20, 0.15)
-        applyBoneRot('Thumb1_L', -0.60, 0, 0)
-        applyBoneRot('Thumb2_L', -0.50, 0, 0)
-      }
-    } else if (isThumbsUp) {
-      for (const f of ['IndexFinger', 'MiddleFinger', 'RingFinger', 'LittleFinger']) {
-        applyBoneRot(`${f}1_R`, -1.25, 0, 0)
-        applyBoneRot(`${f}2_R`, -1.35, 0, 0)
-        applyBoneRot(`${f}3_R`, -1.10, 0, 0)
-      }
-      applyBoneRot('Thumb0_R', 0.25, 0, 0)
-      applyBoneRot('Thumb1_R', 0, 0, 0)
-      applyBoneRot('Thumb2_R', 0, 0, 0)
-    } else if (isOkSign) {
-      applyBoneRot('IndexFinger1_R', -0.90, 0, 0)
-      applyBoneRot('IndexFinger2_R', -1.10, 0, 0)
-      applyBoneRot('IndexFinger3_R', -0.80, 0, 0)
-      applyBoneRot('Thumb0_R', -0.40, 0.20, 0)
-      applyBoneRot('Thumb1_R', -0.60, 0, 0)
-      applyBoneRot('Thumb2_R', -0.40, 0, 0)
-      applyBoneRot('MiddleFinger1_R', 0, 0, -0.08)
-      applyBoneRot('RingFinger1_R', 0, 0, -0.05)
-      applyBoneRot('LittleFinger1_R', 0, 0, -0.03)
-    } else if (isHeartFingers) {
-      applyBoneRot('MiddleFinger1_R', -1.25, 0, 0)
-      applyBoneRot('MiddleFinger2_R', -1.35, 0, 0)
-      applyBoneRot('MiddleFinger3_R', -1.10, 0, 0)
-      applyBoneRot('RingFinger1_R', -1.25, 0, 0)
-      applyBoneRot('RingFinger2_R', -1.35, 0, 0)
-      applyBoneRot('RingFinger3_R', -1.10, 0, 0)
-      applyBoneRot('LittleFinger1_R', -1.25, 0, 0)
-      applyBoneRot('LittleFinger2_R', -1.35, 0, 0)
-      applyBoneRot('LittleFinger3_R', -1.10, 0, 0)
-      applyBoneRot('IndexFinger1_R', 0, 0, 0)
-      applyBoneRot('IndexFinger2_R', -0.60, 0, 0)
-      applyBoneRot('IndexFinger3_R', -0.30, 0, 0)
-      applyBoneRot('Thumb0_R', 0.10, 0.25, 0)
-      applyBoneRot('Thumb1_R', -0.30, 0, 0)
-      applyBoneRot('Thumb2_R', -0.20, 0, 0)
-    }
-  }
-
-  /**
    * Layer subtle organic head tilt, glance away, and gaze wander at idle.
    * Primary gaze maintains steady, warm eye contact with camera/user (9s-16s dwell).
    * Glances away are rare, brief (1.2s-2.2s), and subtle (~2°).
@@ -2268,70 +1658,5 @@ export class Speech2MotionManager {
     this._gazeTargetYaw = targetYaw
     this._gazeTargetPitch = targetPitch
     this._gazeTargetRoll = targetRoll
-  }
-
-  _getBaseRotationY() {
-    if (!this.vrm || !this.vrm.scene) return 0
-    const isRiko = this.vrm.meta?.title === 'Riko' || this.vrm.meta?.name === 'Riko'
-    return isRiko ? Math.PI : 0
-  }
-
-  /**
-   * Procedural 360-degree full-body spin rotation.
-   * The official Speech2Motion dataset record for '转圈' contains upper-body arm flourishes
-   * but lacks full-body yaw rotation. This procedural layer smoothly rotates the avatar's
-   * root scene a full 360° (2π radians) with quintic Hermite easing (zero jerk/acceleration at start and end).
-   */
-  _applySpinMotion(delta) {
-    if (!this.vrm || !this.vrm.scene) return
-    const baseRotY = this._getBaseRotationY()
-
-    const isSpinAction = Boolean(
-      (this.isActionGestureActive || this.actionTrack?.isActionGesture || this.currentTrack?.isActionGesture) &&
-      this.currentActionKeyword === '转圈' &&
-      (this.actionTrack || (this.currentTrack && !this.currentTrack.is_idle))
-    )
-
-    if (isSpinAction) {
-      const currentTrack = this.actionTrack || this.currentTrack
-      const totalDuration = currentTrack.duration || (currentTrack.nFrames / (currentTrack.fps || 30.0)) || 4.5
-      // Spin timing window: smooth lead-in, graceful full turn, smooth follow-through
-      const startDelay = 0.25
-      const spinDuration = Math.max(1.8, Math.min(3.2, totalDuration - startDelay - 0.45))
-      const tEnd = startDelay + spinDuration
-      const pTime = this.actionTrack ? this.rhsPlaybackTime : this.playbackTime
-
-      if (pTime >= startDelay && pTime <= tEnd) {
-        this.isSpinning = true
-        const p = Math.max(0, Math.min(1, (pTime - startDelay) / spinDuration))
-        // 5th-order Hermite smootherstep: zero 1st and 2nd derivatives at endpoints for silky-smooth rotation
-        const eased = p * p * p * (p * (p * 6 - 15) + 10)
-        // Rotate a full 360 degrees (2 * PI radians)
-        const spinAngle = -eased * Math.PI * 2
-        this.vrm.scene.rotation.y = baseRotY + spinAngle
-        return
-      } else if (pTime > tEnd) {
-        this.isSpinning = false
-        this.vrm.scene.rotation.y = baseRotY
-        return
-      } else {
-        // Still in startDelay wind-up
-        this.isSpinning = false
-        this.vrm.scene.rotation.y = baseRotY
-        return
-      }
-    }
-
-    // Not in spin action: if scene rotation is offset from base (e.g. user interrupted mid-spin), smoothly decay back to base
-    this.isSpinning = false
-    const diff = (this.vrm.scene.rotation.y - baseRotY) % (Math.PI * 2)
-    if (Math.abs(diff) > 0.005) {
-      let shortest = diff
-      if (shortest > Math.PI) shortest -= Math.PI * 2
-      if (shortest < -Math.PI) shortest += Math.PI * 2
-      this.vrm.scene.rotation.y = baseRotY + shortest * Math.max(0, 1 - delta * 8.0)
-    } else {
-      this.vrm.scene.rotation.y = baseRotY
-    }
   }
 }

@@ -13,5 +13,15 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/speech2motion/:path*",
+      "destination": "https://xn--dr8haa.uz/oracle/speech2motion/api/v3/speech2motion/:path*"
+    },
+    {
+      "source": "/api/audio2face/:path*",
+      "destination": "https://xn--dr8haa.uz/oracle/audio2face/api/v1/audio2face/:path*"
+    }
   ]
 }

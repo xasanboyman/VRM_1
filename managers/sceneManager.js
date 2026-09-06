@@ -1,5 +1,4 @@
 import * as THREE from 'three'
-import { appUrl } from '../src/utils/appUrl.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 
@@ -265,7 +264,7 @@ export class SceneManager {
     }
 
     // Route through server-side proxy to avoid CORS blocks from remote image hosts
-    const proxyUrl = `${appUrl('api/proxy-image')}?url=${encodeURIComponent(url)}`
+    const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(url)}`
 
     fetch(proxyUrl)
       .then((response) => {

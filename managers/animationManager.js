@@ -3,7 +3,6 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation'
 import { cacheManager } from './cacheManager'
 import { Speech2MotionManager } from './speech2motionManager'
-import { appUrl } from '../src/utils/appUrl.js'
 
 // Mixamo bone name -> VRM humanoid bone name. Lets us consume raw Mixamo FBX
 // exports directly and retarget them onto any VRM at load time (the same method
@@ -62,64 +61,6 @@ const MIXAMO_VRM_RIG_MAP = {
   mixamorigRightFoot: 'rightFoot',
   mixamorigRightToeBase: 'rightToes',
 }
-
-export const LOCAL_ANIMATION_FILES = [
-  { name: 'NeutralIdle', file: 'NeutralIdle.vrma', isLoop: true, isIdle: true },
-  { name: 'HappyIdle', file: 'HappyIdle.vrma', isLoop: true, isIdle: true },
-  { name: 'Acknowledging', file: 'Acknowledging.vrma', isLoop: false },
-  { name: 'Admiration', file: 'Admiration.vrma', isLoop: false },
-  { name: 'Amusement', file: 'Amusement.vrma', isLoop: false },
-  { name: 'Angry', file: 'Angry.vrma', isLoop: false },
-  { name: 'Approval', file: 'Approval.vrma', isLoop: false },
-  { name: 'Backflip', file: 'Backflip.vrma', isLoop: false },
-  { name: 'BlowKiss', file: 'BlowKiss.vrma', isLoop: false },
-  { name: 'Bored', file: 'Bored.vrma', isLoop: false },
-  { name: 'Bow', file: 'Bow.vrma', isLoop: false },
-  { name: 'Cheering', file: 'Cheering.vrma', isLoop: false },
-  { name: 'Clapping', file: 'Clapping.vrma', isLoop: false },
-  { name: 'Confusion', file: 'Confusion.vrma', isLoop: false },
-  { name: 'Curiosity', file: 'Curiosity.vrma', isLoop: false },
-  { name: 'CutthroatGesture', file: 'CutthroatGesture.vrma', isLoop: false },
-  { name: 'Dab', file: 'Dab.vrma', isLoop: false },
-  { name: 'Disappointment', file: 'Disappointment.vrma', isLoop: false },
-  { name: 'Disgust', file: 'Disgust.vrma', isLoop: false },
-  { name: 'Embarrassment', file: 'Embarrassment.vrma', isLoop: false },
-  { name: 'Excitement', file: 'Excitement.vrma', isLoop: false },
-  { name: 'Explaining', file: 'Explaining.vrma', isLoop: false },
-  { name: 'Facepalm', file: 'Facepalm.vrma', isLoop: false },
-  { name: 'Fear', file: 'Fear.vrma', isLoop: false },
-  { name: 'GangnamStyle', file: 'GangnamStyle.vrma', isLoop: false },
-  { name: 'Gratitude', file: 'Gratitude.vrma', isLoop: false },
-  { name: 'Greeting', file: 'Greeting.vrma', isLoop: false },
-  { name: 'Grief', file: 'Grief.vrma', isLoop: false },
-  { name: 'HandsOnHips', file: 'HandsOnHips.vrma', isLoop: false },
-  { name: 'HeartFingers', file: 'HeartFingers.vrma', isLoop: false },
-  { name: 'HipHopDance', file: 'HipHopDance.vrma', isLoop: false },
-  { name: 'Joy', file: 'Joy.vrma', isLoop: false },
-  { name: 'Laughing', file: 'Laughing.vrma', isLoop: false },
-  { name: 'LookingAround', file: 'LookingAround.vrma', isLoop: false },
-  { name: 'LookingAtFingerFromBoredom', file: 'LookingAtFingerFromBoredom.vrma', isLoop: false },
-  { name: 'Love', file: 'Love.vrma', isLoop: false },
-  { name: 'MacarenaDance', file: 'MacarenaDance.vrma', isLoop: false },
-  { name: 'Nervous', file: 'Nervous.vrma', isLoop: false },
-  { name: 'Nod', file: 'Nod.vrma', isLoop: false },
-  { name: 'Pat', file: 'Pat.vrma', isLoop: false },
-  { name: 'Pointing', file: 'Pointing.vrma', isLoop: false },
-  { name: 'Pride', file: 'Pride.vrma', isLoop: false },
-  { name: 'Realization', file: 'Realization.vrma', isLoop: false },
-  { name: 'Relief', file: 'Relief.vrma', isLoop: false },
-  { name: 'Sadness', file: 'Sadness.vrma', isLoop: false },
-  { name: 'Salute', file: 'Salute.vrma', isLoop: false },
-  { name: 'ShakeHead', file: 'ShakeHead.vrma', isLoop: false },
-  { name: 'Shrugging', file: 'Shrugging.vrma', isLoop: false },
-  { name: 'Shy', file: 'Shy.vrma', isLoop: false },
-  { name: 'Sleeping', file: 'Sleeping.vrma', isLoop: false },
-  { name: 'Surprise', file: 'Surprise.vrma', isLoop: false },
-  { name: 'Taunt', file: 'Taunt Gesture.vrma', isLoop: false },
-  { name: 'Thinking', file: 'Thinking.vrma', isLoop: false },
-  { name: 'ThumbsUp', file: 'ThumbsUp.vrma', isLoop: false },
-  { name: 'Waving', file: 'Waving.vrma', isLoop: false },
-]
 
 // Safety net: maps common names the model invents to real catalog animations,
 // so a near-miss still plays something fitting instead of doing nothing.
@@ -242,11 +183,8 @@ const EXPRESSION_ALIASES = {
   blush: ['blush', '照れ', 'blush_lines', '////'],
   '照れ': ['照れ', 'blush', 'blush_lines', '////'],
 
-  tears: ['tears', '涙', 'crying', 'cry', 'tear', 'teardrop', 'teardrops'],
-  tear: ['tears', '涙', 'crying', 'cry', 'tear', 'teardrop'],
-  teardrop: ['tears', '涙', 'crying', 'cry', 'teardrops'],
-  teardrops: ['tears', '涙', 'crying', 'cry', 'teardrop'],
-  '涙': ['涙', 'tears', 'crying', 'cry'],
+  tears: ['tears', '涙'],
+  '涙': ['涙', 'tears'],
 
   blush_lines: ['blush_lines', '////', 'blush', '照れ'],
   '////': ['////', 'blush_lines', '照れ', 'blush'],
@@ -387,7 +325,7 @@ export class AnimationManager {
   loader
   camera = null
   currentState = 'idle'
-  mainIdle = 'NeutralIdle'
+  mainIdle = 'Unarmed_idle01'
   currentExpression = 'neutral'
   targetExpression = 'neutral'
   targetExpressionWeights = { neutral: 1 }
@@ -510,17 +448,16 @@ export class AnimationManager {
     this.loader.setCrossOrigin('anonymous')
     this.loader.register((parser) => new VRMAnimationLoaderPlugin(parser))
 
-    this._origHumanoidUpdate = (this.vrm?.humanoid?.update && typeof this.vrm.humanoid.update === 'function')
-      ? this.vrm.humanoid.update.bind(this.vrm.humanoid)
-      : null
-    this.isFallbackActive = false
-
     this.speech2motion = new Speech2MotionManager(vrm, {
-      avatarName: 'all',
+      avatarName: 'Ani-default',
       animationManager: this,
       audioManager: typeof window !== 'undefined' ? window.vrmAudioManager : null,
       enabled: true,
     })
+
+    if (this.vrm?.humanoid) {
+      this.vrm.humanoid.update = () => {}
+    }
 
     this.clearExpressionCache()
     this._tempKeysToUpdate = new Set()
@@ -539,10 +476,6 @@ export class AnimationManager {
       blush: { happy: 0.3, blush: 1.0 },
       '照れ': { happy: 0.3, blush: 1.0 },
       tears: { sad: 0.8, tears: 1.0 },
-      tear: { sad: 0.8, tears: 1.0 },
-      cry: { sad: 1.0, tears: 1.0 },
-      teardrop: { sad: 0.8, tears: 1.0 },
-      teardrops: { sad: 0.8, tears: 1.0 },
       '涙': { sad: 0.8, tears: 1.0 },
       blush_lines: { happy: 0.3, blush_lines: 1.0 },
       '////': { happy: 0.3, blush_lines: 1.0 },
@@ -924,82 +857,51 @@ export class AnimationManager {
   }
 
   getAvailableAnimations() {
-    return LOCAL_ANIMATION_FILES.map((f) => f.name)
+    return []
   }
 
   getAnimationCatalog() {
-    return LOCAL_ANIMATION_FILES
+    return []
   }
 
-  // Every animation the AI is allowed to trigger: mocap gesture keywords from Speech2Motion or local .vrma
+  // Every animation the AI is allowed to trigger: mocap gesture keywords from Speech2Motion
   getTriggerableAnimationNames() {
     if (this.speech2motion && this.speech2motion.enabled) {
       return Object.keys(this.speech2motion.gestureKeywordMap)
     }
-    return LOCAL_ANIMATION_FILES.map((f) => f.name)
+    return [
+      'spin', 'spin_360', 'rotate', 'twirl',
+      'shrug', 'as_you_insist', 'wave', 'greeting', 'hello',
+      'clap', 'applause', 'heart_fingers', 'love',
+      'hands_on_hips', 'sassy', 'nod', 'approval',
+      'shake_head', 'bow', 'thinking', 'thumbs_up',
+      'shy', 'jump', 'cry', 'quiet', 'cheering', 'joy'
+    ]
   }
 
   getAnimationRepoBase() {
-    return appUrl('animations/')
+    return ''
   }
 
-  async loadAnimationFile(item) {
-    if (!item) return null
-    const filename = item.file || (item.name.endsWith('.vrma') ? item.name : `${item.name}.vrma`)
-    const url = appUrl(`animations/${filename}`)
-    try {
-      return await this.loadClip(item.name, url, item.isLoop)
-    } catch (err) {
-      console.warn(`Could not load animation ${item.name} from ${url}:`, err)
-      return null
-    }
+  async loadAnimationFile(file) {
+    return null
   }
 
   async loadAnimationBatch(files, options = {}) {
-    if (!Array.isArray(files)) return
-    const promises = files.map((f) => this.loadAnimationFile(f))
-    await Promise.allSettled(promises)
+    return Promise.resolve()
   }
 
   startBackgroundAnimationLoad(options = {}) {
-    if (this.backgroundLoadPromise) return this.backgroundLoadPromise
-    this.backgroundLoadPromise = (async () => {
-      for (const item of LOCAL_ANIMATION_FILES) {
-        if (!this.actions[item.name]) {
-          await this.loadAnimationFile(item).catch(() => {})
-        }
-      }
-    })()
-    return this.backgroundLoadPromise
-  }
-
-  setVRM(vrm) {
-    this.vrm = vrm
-    if (this.mixer) {
-      try {
-        this.mixer.stopAllAction()
-      } catch (e) {}
-      this.mixer = new THREE.AnimationMixer(vrm.scene)
-    }
-    this._origHumanoidUpdate = (this.vrm?.humanoid?.update && typeof this.vrm.humanoid.update === 'function')
-      ? this.vrm.humanoid.update.bind(this.vrm.humanoid)
-      : null
-    if (this.vrm?.humanoid) {
-      this.vrm.humanoid.update = () => {}
-    }
-    this.clearExpressionCache()
-    if (this.speech2motion) {
-      this.speech2motion.setVRM(vrm)
-    }
+    return Promise.resolve()
   }
 
   async initialize(options = {}) {
     const { onProgress } = options
-    console.log('AnimationManager: Initializing animation subsystem...')
+    console.log('AnimationManager: Initializing with Speech2Motion (100% mocap synthesized motion online)...')
 
     if (!this.speech2motion) {
       this.speech2motion = new Speech2MotionManager(this.vrm, {
-        avatarName: 'all',
+        avatarName: 'Ani-default',
         animationManager: this,
         audioManager: typeof window !== 'undefined' ? window.vrmAudioManager : null,
         enabled: true,
@@ -1011,60 +913,11 @@ export class AnimationManager {
       }
     }
 
-    if (this.vrm?.humanoid) {
-      this.vrm.humanoid.update = () => {}
-    }
-
-    // Speech2Motion starts immediately with bundled idle track (0ms latency, zero freezing)
-    this.speech2motion.startInfiniteMotion().catch((err) => {
-      console.warn('Speech2Motion background motion notice:', err)
-    })
-
-    console.log('AnimationManager Ready: Speech2Motion infinite streaming motion online')
     onProgress?.({ current: 1, total: 1, name: 'Speech2Motion' })
-  }
 
-  async onSpeech2MotionOffline() {
-    if (this.speech2motion?.idleTrack) {
-      return
-    }
-    if (this.isFallbackActive) return
-    this.isFallbackActive = true
-
-    // Restore normalized humanoid bone updates so mixer and procedural animations work
-    if (this._origHumanoidUpdate && this.vrm?.humanoid) {
-      this.vrm.humanoid.update = this._origHumanoidUpdate
-    }
-
-    this.mainIdle = 'NeutralIdle'
-
-    // Load and play main idle animation
-    try {
-      const idleAction = await this.loadAnimationFile({ name: 'NeutralIdle', file: 'NeutralIdle.vrma', isLoop: true, isIdle: true })
-      if (idleAction) {
-        this.play('NeutralIdle')
-      }
-    } catch (err) {
-      console.warn('Fallback NeutralIdle load error:', err)
-    }
-
-    // Preload core conversational animations
-    const corePreload = [
-      { name: 'Greeting', file: 'Greeting.vrma', isLoop: false },
-      { name: 'Explaining', file: 'Explaining.vrma', isLoop: false },
-      { name: 'Nod', file: 'Nod.vrma', isLoop: false },
-      { name: 'Joy', file: 'Joy.vrma', isLoop: false },
-      { name: 'Cheering', file: 'Cheering.vrma', isLoop: false },
-      { name: 'Shrugging', file: 'Shrugging.vrma', isLoop: false },
-      { name: 'ThumbsUp', file: 'ThumbsUp.vrma', isLoop: false },
-      { name: 'Waving', file: 'Waving.vrma', isLoop: false },
-      { name: 'HappyIdle', file: 'HappyIdle.vrma', isLoop: true },
-    ]
-    for (const item of corePreload) {
-      this.loadAnimationFile(item).catch(() => {})
-    }
-
-    console.info('✅ AnimationManager: Avatar running smoothly with 55 high-quality .vrma animations + procedural breathing.')
+    // Start infinite continuous human mocap streaming immediately
+    await this.speech2motion.startInfiniteMotion()
+    console.log('AnimationManager Ready: Speech2Motion infinite streaming motion online')
   }
 
   async loadClipWithFallback(name, localPath, remoteUrl, isLoop) {
@@ -1350,7 +1203,7 @@ export class AnimationManager {
     return resolved
   }
 
-  setExpression(name, duration = 3.0, facialOnly = false) {
+  setExpression(name, duration = 3.0) {
     const winkNames = ['wink', 'wink2', 'wink2_right', 'tehepero', 'てへぺろ', 'ウィンク', 'ウィンク２', 'ウィンク２右']
     const isWink = winkNames.includes(String(name || '').toLowerCase().trim())
     // Playful winks and tehepero expressions should be brief accents (~0.75s) so the eye never looks stuck shut
@@ -1364,26 +1217,22 @@ export class AnimationManager {
     this.currentEmotion = name
 
     // Trigger full body mocap emotion posture only for genuine whole-body emotions,
-    // and NEVER when facialOnly is requested, when an action gesture is active, or during active speech
+    // and NEVER interrupt an active action gesture (like 360 spin or dance)
     const wholeBodyEmotions = [
-      'shy', 'blush', 'sad', 'tears', 'tear', 'cry', 'crying', 'angry', 'mad', 'happy', 'joy',
+      'shy', 'blush', 'sad', 'tears', 'angry', 'mad', 'happy', 'joy',
       'surprised', 'thinking', 'curious', 'bored', 'nervous', 'relief',
       'sassy', 'smug', 'tsundere', 'confident', 'pride', 'flustered', 'love', 'heart'
     ]
     const isWholeBodyEmotion = wholeBodyEmotions.includes(String(name || '').toLowerCase().trim())
 
     if (this.speech2motion && this.speech2motion.enabled && !this.speech2motion.isActionGestureActive) {
-      if (isWholeBodyEmotion && !facialOnly) {
+      if (isWholeBodyEmotion) {
         if (!this.speech2motion.isSpeechActive) {
           this.speech2motion.triggerEmotion(name)
         } else {
           this.speech2motion.currentEmotion = name
         }
-      } else {
-        this.speech2motion.currentEmotion = name
       }
-    } else if (isWholeBodyEmotion && !facialOnly && !this.speech2motion?.enabled) {
-      this.triggerAnimation(name)
     }
 
     if (this.expressionTimer) clearTimeout(this.expressionTimer)
@@ -1391,7 +1240,7 @@ export class AnimationManager {
       this.expressionTimer = setTimeout(() => {
         this._applyExpressionTarget('neutral')
         this.currentEmotion = 'idle'
-        if (!facialOnly && this.speech2motion && this.speech2motion.enabled && this.speech2motion.isOnline && !this.speech2motion.isSpeechActive && !this.speech2motion.isActionGestureActive) {
+        if (this.speech2motion && !this.speech2motion.isSpeechActive && !this.speech2motion.isActionGestureActive) {
           this.speech2motion.triggerEmotion('idle')
         }
       }, effectiveDuration * 1000)
@@ -1632,7 +1481,7 @@ export class AnimationManager {
   }
 
   update(delta) {
-    const isSpeech2MotionActive = this.speech2motion && this.speech2motion.enabled && (this.speech2motion.isOnline || Boolean(this.speech2motion.idleTrack))
+    const isSpeech2MotionActive = this.speech2motion && this.speech2motion.enabled
 
     if (isSpeech2MotionActive) {
       this.speech2motion.update(delta)
@@ -1711,9 +1560,7 @@ export class AnimationManager {
       }
 
       // LookAt implementation - eyes track camera with smooth ocular micro-saccades
-      // During a 360-degree spin, suppress lookAt tracking so head rotates naturally with body
-      const isSpinning = Boolean(this.speech2motion?.isSpinning)
-      if (this.vrm.lookAt && this.camera && !isSpinning) {
+      if (this.vrm.lookAt && this.camera) {
         if (!this._lookAtTarget) {
           this._lookAtTarget = new THREE.Object3D()
           this.camera.add(this._lookAtTarget)

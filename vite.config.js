@@ -508,7 +508,6 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    base: String(env.VITE_BASE_PATH || '/').replace(/\/?$/, '/'),
     plugins: [
       vue(),
       basicSsl(),
@@ -567,25 +566,29 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: {
         '/api/speech2motion': {
-          target: 'http://127.0.0.1:18084',
+          target: String(env.VITE_SPEECH2MOTION_URL || 'https://xn--dr8haa.uz/oracle/speech2motion').trim(),
           rewrite: (path) => path.replace(/^\/api\/speech2motion/, '/api/v3/speech2motion'),
           changeOrigin: true,
+          secure: false,
         },
         '/speech2motion-ws': {
-          target: 'ws://127.0.0.1:18084',
+          target: String(env.VITE_SPEECH2MOTION_WS_URL || 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/speech2motion/ws').replace(/\/api\/v3\/speech2motion\/ws$/, '').trim(),
           ws: true,
+          secure: false,
           rewrite: (path) => path.replace(/^\/speech2motion-ws/, ''),
           changeOrigin: true,
         },
         '/api/audio2face': {
-          target: 'http://127.0.0.1:18083',
+          target: String(env.VITE_AUDIO2FACE_URL || 'https://xn--dr8haa.uz/oracle/audio2face').trim(),
           rewrite: (path) => path.replace(/^\/api\/audio2face/, '/api/v1/audio2face'),
           changeOrigin: true,
+          secure: false,
         },
         '/audio2face-ws': {
-          target: 'ws://127.0.0.1:18083',
+          target: String(env.VITE_AUDIO2FACE_WS_URL || 'wss://xn--dr8haa.uz/oracle/audio2face/api/v1/audio2face/ws').replace(/\/api\/v1\/audio2face\/ws$/, '').trim(),
           ws: true,
-          rewrite: (path) => path.replace(/^\/audio2face-ws/, '/api/v1/streaming_audio2face/ws'),
+          secure: false,
+          rewrite: (path) => path.replace(/^\/audio2face-ws/, '/api/v1/audio2face/ws'),
           changeOrigin: true,
         },
       },
