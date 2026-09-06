@@ -154,10 +154,11 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
 export class Speech2MotionManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
-    const DEFAULT_SPEECH2MOTION_WS_URL = 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/streaming_speech2motion/ws'
+    const DEFAULT_SPEECH2MOTION_URL = 'https://xn--dr8haa.uz/oracle/speech2motion'
+    const DEFAULT_SPEECH2MOTION_WS_URL = 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/speech2motion/ws'
 
     const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_URL
-    this.apiEndpoint = options.apiEndpoint || null
+    this.apiEndpoint = options.apiEndpoint || (envUrl ? `${envUrl}/api/v3/speech2motion/generate` : `${DEFAULT_SPEECH2MOTION_URL}/api/v3/speech2motion/generate`)
     this.avatarName = options.avatarName || 'Ani-default'
     this.enabled = options.enabled !== false
 
@@ -179,7 +180,7 @@ export class Speech2MotionManager {
           const u = new URL(envUrl)
           const protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
           const basePath = u.pathname.replace(/\/+$/, '')
-          this.wsEndpoint = `${protocol}//${u.host}${basePath}/api/v3/streaming_speech2motion/ws`
+          this.wsEndpoint = `${protocol}//${u.host}${basePath}/api/v3/speech2motion/ws`
         } catch (_) {
           this.wsEndpoint = DEFAULT_SPEECH2MOTION_WS_URL
         }
@@ -187,9 +188,11 @@ export class Speech2MotionManager {
         this.wsEndpoint = DEFAULT_SPEECH2MOTION_WS_URL
       }
     }
-    this.wsEndpoint = this.wsEndpoint?.replace('/api/v3/speech2motion/ws', '/api/v3/streaming_speech2motion/ws')
     this.wsPendingRequests = new Map()
     this.wsReconnectTimer = null
+    if (this.wsEndpoint) {
+      this._initWebSocket()
+    }
 
     // Playback state
     this.currentTrack = null
@@ -561,6 +564,94 @@ export class Speech2MotionManager {
     isActionGesture = false,
   }) {
     const cleanSpeechText = (speechText && speechText !== '...') ? (stripExpressionCommands(speechText) || '...') : '...'
+
+    const payload = {
+      user_id: 'vrm-web-client',
+      avatar: this.avatarName || 'all',
+      speech_text: cleanSpeechText,
+      duration: Math.max(1.0, duration),
+      app_name: 'babylon',
+      label_expression: labelExpression,
+    }
+    if (isIdle) payload.is_idle = true
+    if (emotion) payload.emotion = emotion
+    if (motionRecordId) payload.motion_record_id = motionRecordId
+    if (motionKeywords && motionKeywords.length > 0) {
+      payload.motion_keywords = Array.isArray(motionKeywords) ? motionKeywords : [motionKeywords]
+    }
+    if (speechTime && Array.isArray(speechTime) && speechTime.length > 0) {
+      payload.speech_time = speechTime
+    }
+
+    // 1. Ensure WebSocket connection is active
+    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+      this._initWebSocket()
+    }
+
+    if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+      // Wait up to 1000ms for WebSocket handshake
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 1000)
+        const onOpen = () => { clearTimeout(timer); resolve() }
+        const onError = () => { clearTimeout(timer); resolve() }
+        this.ws?.addEventListener('open', onOpen, { once: true })
+        this.ws?.addEventListener('error', onError, { once: true })
+      })
+    }
+
+    // 2. Try persistent low-latency WebSocket first (~95ms response time)
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      try {
+        const requestId = 'req_' + Math.random().toString(36).substring(2) + Date.now()
+        payload.request_id = requestId
+        const data = await this._sendWsRequest(payload, requestId, 6000)
+        if (data && data.ok && (data.data_base64 || data.bytes)) {
+          this.isOnline = true
+          this.consecutiveFailures = 0
+          const track = this._parseMotionPayload(data)
+          track.is_idle = Boolean(isIdle)
+          if (emotion) track.emotion = emotion
+          if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
+            track.isActionGesture = true
+          }
+          return track
+        }
+      } catch (wsErr) {
+        if (this.isOnline) {
+          console.warn('Speech2Motion persistent WS request failed, trying HTTP POST fallback:', wsErr)
+        }
+      }
+    }
+
+    // 3. Fallback to HTTP POST
+    if (this.apiEndpoint) {
+      try {
+        const response = await fetch(this.apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data && data.ok && (data.data_base64 || data.bytes)) {
+            this.isOnline = true
+            this.consecutiveFailures = 0
+            const track = this._parseMotionPayload(data)
+            track.is_idle = Boolean(isIdle)
+            if (emotion) track.emotion = emotion
+            if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
+              track.isActionGesture = true
+            }
+            return track
+          }
+        }
+      } catch (httpErr) {
+        // Fall through to protobuf fallback
+      }
+    }
+
+    // 4. Fallback to official protobuf streaming if server only provides /api/v3/streaming_speech2motion/ws
     try {
       const data = await this._requestOfficialTrack({
         speechText: cleanSpeechText,
@@ -569,24 +660,27 @@ export class Speech2MotionManager {
         motionKeywords: motionKeywords || [],
         speechTime: speechTime || [],
       })
-      if (!data) throw new Error('Speech2Motion returned no motion data')
-      this.isOnline = true
-      this.consecutiveFailures = 0
-      const track = this._parseMotionPayload(data)
-      track.is_idle = Boolean(isIdle)
-      if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
-        track.isActionGesture = true
+      if (data) {
+        this.isOnline = true
+        this.consecutiveFailures = 0
+        const track = this._parseMotionPayload(data)
+        track.is_idle = Boolean(isIdle)
+        if (emotion) track.emotion = emotion
+        if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
+          track.isActionGesture = true
+        }
+        return track
       }
-      return track
-    } catch (err) {
+    } catch (pbErr) {
       this.consecutiveFailures++
       if (this.consecutiveFailures >= 2 || !this.isOnline) {
-        this._handleBackendOffline(err.message || err)
+        this._handleBackendOffline(pbErr.message || pbErr)
       } else {
-        console.warn('Speech2Motion fetch failed:', err)
+        console.warn('Speech2Motion fetch failed across all protocols:', pbErr)
       }
-      return null
     }
+
+    return null
   }
 
   /**

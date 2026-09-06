@@ -2217,19 +2217,19 @@ export class AIClient {
           {
             name: 'set_expression',
             description:
-              'Trigger a facial expression or emotional morph on the avatar face (e.g. tears when sad or crying, blush when shy/embarrassed, anger_mark when angry, sweat when nervous, star_eyes when amazed, happy, sad, angry, surprised, relaxed, smile, smirk, tehepero, cat_mouth, neutral).',
+              'Trigger a facial expression or special anime effect on the avatar face (e.g. wink/wink2 for a playful wink, tears when sad or crying, blush when shy/embarrassed, anger_mark when angry, sweat when nervous, star_eyes when amazed, happy, sad, angry, surprised, relaxed, smile, smirk, tehepero, cat_mouth, neutral).',
             parameters: {
               type: 'OBJECT',
               properties: {
                 expression: {
                   type: 'STRING',
                   description:
-                    'The expression name to trigger. Allowed values: tears, crying, blush, blush_lines, anger_mark, sweat, star_eyes, dizzy, shocked, happy, sad, angry, surprised, relaxed, smile, smirk, cat_mouth, tehepero, neutral.',
+                    'The expression name to trigger. Allowed values: wink, wink2, wink2_right, tears, crying, blush, blush_lines, anger_mark, sweat, star_eyes, dizzy, shocked, happy, sad, angry, surprised, relaxed, smile, smirk, cat_mouth, tehepero, neutral.',
                 },
                 duration: {
                   type: 'NUMBER',
                   description:
-                    'Duration in seconds to hold the expression before fading back to neutral (default: 4.0s).',
+                    'Duration in seconds to hold the expression before fading back to neutral (default: 4.0s, winks auto-capped to 0.75s).',
                 },
               },
               required: ['expression'],

@@ -312,8 +312,21 @@ export async function createVRMChatSystem(canvas, options = {}) {
       const normalizedPersonaPrompt = typeof personaPrompt === 'string' ? personaPrompt.trim() : ''
       const normalizedPreferredLanguage = resolveLanguage(preferredLanguage)
       const compactGlobalAnimationCommand =
-        'FACIAL EXPRESSIONS & LIP-SYNC: Real-time facial expressions, emotions, and mouth lip-sync are generated autonomously by neural Speech2Face and Audio2Face directly from your spoken voice and emotional tone. When crying or sad, real tear drops appear in your eyes! You can call set_expression(expression, duration) for expressions (tears, crying, blush, anger_mark, sweat, star_eyes, happy, sad, angry, surprised, wink, cat_mouth). ' +
-        'BODY MOTION TOOL PROTOCOL: Speech2Motion creates actual full-body motion from the spoken reply plus motion keywords. When the user asks for, or you promise, a visible supported action, you MUST call trigger_gesture exactly once in that same turn; do not merely narrate or write a stage direction. Use only: salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up, jump, cry, quiet. A spin means one complete 360-degree body rotation. After the tool call, say a short natural cue naming that action so it is timed with speech—for example, "Watch me spin 360 degrees!" or "Here comes a wave!". Do not trigger an action for figurative language or actions outside this list.'
+        'SPEECH2MOTION & ANIMATION COHESION: ' +
+        '1. COHESIVE SENTENCE LENGTH: Keep each spoken reply to 1–2 concise, natural sentences (around 10–25 words total, 2–5 seconds speaking time). Avoid long monologues. Short sentences allow Speech2Motion to synthesize fluid, single-clip cohesive mocap motions without clip-stitching seams or audio buffering delays. ' +
+        '2. BODY MOTIONS & GESTURES: When performing a physical action, perform at most ONE visible action per turn. Supported actions: salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up, jump, cry, quiet. (A spin means one complete 360-degree body rotation). You can call trigger_gesture(gesture) or use natural stage directions with a spoken cue (e.g. "*spins* Watch me do a 360 spin!" or "*salutes* At your service!"). Always name the action in your spoken words so motion aligns with your voice. ' +
+        '3. SPECIAL FACIAL EFFECTS & EXPRESSIONS: Real-time facial expressions, emotions, and lip-sync are generated autonomously by neural Speech2Face and Audio2Face. Ani also has unique anime special effects! Trigger them via set_expression(expression, duration) or asterisk stage directions: ' +
+        'wink (playful wink ~0.75s), ' +
+        'tears (real teardrops flowing down eyes when crying/sad), ' +
+        'blush (cute pink anime cheek blush when shy/embarrassed), ' +
+        'anger_mark (anime popping vein mark 💢 when annoyed/angry), ' +
+        'sweat (anime sweatdrop on temple when nervous/awkward), ' +
+        'star_eyes (sparkling star eyes when amazed/excited), ' +
+        'dizzy (swirling spiral eyes when confused), ' +
+        'cat_mouth (cute :3 cat face when mischievous/playful), ' +
+        'tehepero (playful wink with tongue sticking out), ' +
+        'smirk (sassy cocky smirk), ' +
+        'shocked, happy, sad, angry, surprised, relaxed.'
       const compactDefaultSystemPrompt =
         'You are Rico, a witty and slightly sassy assistant. Be playful, concise, and genuinely helpful. ' +
         'Keep replies short, avoid monologues, and use light roasting only when it fits. ' +
@@ -381,9 +394,30 @@ export async function createVRMChatSystem(canvas, options = {}) {
         if (!text || typeof text !== 'string') return null
         const lower = text.toLowerCase()
 
+        // 0. Explicit Asterisk Stage Directions & Special Effects (*winks*, *blushes*, *cries*, *sweats*, etc.)
+        if (/\*([^*]*wink[^*]*)\*/i.test(text) || /\b(wink(?:s|ed|ing)?)\b/i.test(lower) || /(ウィンク|眨眼)/.test(text)) {
+          return { face: 'wink', body: null }
+        }
+        if (/\*([^*]*(?:tehepero|tongue)[^*]*)\*/i.test(text) || /\b(tehepero|bleh|tongue\s*out)\b/i.test(lower) || /(てへぺろ|吐舌)/.test(text)) {
+          return { face: 'tehepero', body: null }
+        }
+        if (/\*([^*]*(?:star|sparkle)[^*]*)\*/i.test(text) || /\b(star\s*eyes?|sparkl(?:e|ing)|shining\s*eyes?)\b/i.test(lower) || /(星目|星星眼)/.test(text)) {
+          return { face: 'star_eyes', body: 'happy' }
+        }
+        if (/\*([^*]*cat[^*]*)\*/i.test(text) || /\b(cat\s*mouth|cat\s*face|:3|nya(?:n)?)\b/i.test(lower) || /(猫嘴|喵)/.test(text)) {
+          return { face: 'cat_mouth', body: null }
+        }
+        if (/\*([^*]*dizzy[^*]*)\*/i.test(text) || /\b(dizzy|swirl\s*eyes?|spinning\s*head)\b/i.test(lower) || /(ぐるぐる|晕)/.test(text)) {
+          return { face: 'dizzy', body: null }
+        }
+        if (/\*([^*]*smirk[^*]*)\*/i.test(text) || /\b(smirk(?:s|ed|ing)?)\b/i.test(lower) || /(にやり|冷笑|奸笑)/.test(text)) {
+          return { face: 'smirk', body: 'sassy' }
+        }
+
         // 1. Shy / Blush / Romantic Confession / Bashful (Reference video 0:45-1:07)
         if (
-          /\b(love\s*you|love\s*me|blush(?:ing)?|embarrass(?:ed|ing)|flustered|shy|bashful|c-cute|sweetheart|darling|honey|crush|confess(?:ion)?|heartbeat|my\s+heart|w-what|st-stop)\b/i.test(lower) ||
+          /\*([^*]*(?:blush|shy|fluster)[^*]*)\*/i.test(text) ||
+          /\b(love\s*you|love\s*me|blush(?:ing|es)?|embarrass(?:ed|ing)|flustered|shy|bashful|c-cute|sweetheart|darling|honey|crush|confess(?:ion)?|heartbeat|my\s+heart|w-what|st-stop)\b/i.test(lower) ||
           /([/／]{2,}|害羞|脸红|心跳|喜欢你|我爱你|讨厌啦|别这样)/.test(text)
         ) {
           return { face: 'blush', body: 'shy' }
@@ -391,6 +425,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
         // 2. Sassy / Tsundere / Smug / Teasing / Proud (Reference video 0:30-0:45)
         if (
+          /\*([^*]*(?:sassy|smug|tsundere)[^*]*)\*/i.test(text) ||
           /\b(silly|sassy|smug|baka|hmph|as\s+if|who\s+are\s+you\s+calling|of\s+course|obviously|duh|excuse\s+me|underestimate|foolish|amateur|don't\s+flatter)\b/i.test(lower) ||
           /(哼|才不是|得意|傲娇|笨蛋|傻瓜)/.test(text)
         ) {
@@ -399,14 +434,16 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
         // 3. Anger / Mad / Annoyed
         if (
+          /\*([^*]*(?:angry|rage|mad|pout)[^*]*)\*/i.test(text) ||
           /\b(angry|furious|mad|rage|annoy(?:ed|ing)|shut\s+up|how\s+dare\s+you|stop\s+it|hate)\b/i.test(lower) ||
-          /(生气|气死|愤怒|恼火)/.test(text)
+          /(生气|气死|愤怒|恼火|💢)/.test(text)
         ) {
           return { face: 'anger_mark', body: 'angry' }
         }
 
         // 4. Sadness / Sorrow / Crying (Avatar's Special Eye Tears)
         if (
+          /\*([^*]*(?:cry|tears?|sob|weep)[^*]*)\*/i.test(text) ||
           /\b(sad|crying|cry|tears?|teardrops?|sniff(?:le|ling)?|weep(?:ing)?|sob(?:bing)?|heartbroken|grief|depressed|unfortunate|so\s+sorry|bawl(?:ing)?)\b/i.test(lower) ||
           /(难过|伤心|哭|悲伤|心碎|流泪|眼泪|呜呜)/.test(text)
         ) {
@@ -415,7 +452,8 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
         // 5. Nervous / Sweat / Anxious
         if (
-          /\b(nervous|sweat(?:ing)?|anxious|worried|panicking|sweatdrop)\b/i.test(lower) ||
+          /\*([^*]*(?:sweat|nervous|anxious)[^*]*)\*/i.test(text) ||
+          /\b(nervous|sweat(?:drop|ing)?|anxious|worried|panicking)\b/i.test(lower) ||
           /(紧张|流汗|冷汗|担心)/.test(text)
         ) {
           return { face: 'sweat', body: 'nervous' }
@@ -423,6 +461,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
         // 6. Surprised / Shocked / Amazed
         if (
+          /\*([^*]*(?:gasp|shock|surpris)[^*]*)\*/i.test(text) ||
           /\b(wow|omg|unbelievable|no\s+way|really\??|shocking|shocked|amazed|astonishing|what\?{2,})\b/i.test(lower) ||
           /(吃惊|震惊|哇|不会吧|真的吗)/.test(text)
         ) {
@@ -431,6 +470,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
         // 7. Thinking / Pondering
         if (
+          /\*([^*]*(?:think|ponder)[^*]*)\*/i.test(text) ||
           /\b(let\s+me\s+think|hmm|pondering|wondering|perhaps|let's\s+see|curious)\b/i.test(lower) ||
           /(思考|让我想想|唔|琢磨)/.test(text)
         ) {
@@ -439,6 +479,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
         // 8. Happy / Cheerful / Excited
         if (
+          /\*([^*]*(?:smile|laugh|cheer)[^*]*)\*/i.test(text) ||
           /\b(happy|joy|excited|yay|great|awesome|wonderful|celebrate|haha|hehe|glad|delighted|pleased)\b/i.test(lower) ||
           /(开心|太好了|好耶|哈哈|嘻嘻|高兴)/.test(text)
         ) {
@@ -587,21 +628,24 @@ export async function createVRMChatSystem(canvas, options = {}) {
             console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] aligned directly to spoken word in text`)
             pendingTurnGesture = null
           } else {
-            // A Live tool call is authoritative. Keep the requested action even if
-            // the generated reply contains another incidental gesture such as "hi"
-            // (which otherwise used to suppress a requested 360-degree spin).
-            // When Gemini speaks an action cue, align to it; otherwise start the
-            // action at the utterance beginning so motion and audio stay together.
+            // 2. Check if utteranceText contains the matching word/phrase and align to its exact character offset
             const pat = gesturePatternMap[lowerG]
             const m = pat ? pat.exec(utteranceText) : null
-            const actionOffset = m ? m.index : 0
-            timingInfo.motionKeywords.push([actionOffset, mappedKw])
-            timingInfo.motionKeywords.sort((a, b) => a[0] - b[0])
-            console.log(
-              `✨ Speech2Motion: Authoritative gesture "${lowerG}" -> [${mappedKw}] ` +
-              `${m ? `aligned to cue at char index ${actionOffset}` : 'started with this utterance'}`,
-            )
-            pendingTurnGesture = null
+            if (m) {
+              timingInfo.motionKeywords.push([m.index, mappedKw])
+              timingInfo.motionKeywords.sort((a, b) => a[0] - b[0])
+              console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] aligned to word at char index ${m.index}`)
+              pendingTurnGesture = null
+            } else if (isFinalTurn) {
+              // 3. Fallback for final turn when the model triggered the tool but didn't speak the specific keyword
+              if (timingInfo.motionKeywords.length === 0) {
+                timingInfo.motionKeywords.push([0, mappedKw])
+                console.log(`✨ Speech2Motion: Gesture "${lowerG}" -> [${mappedKw}] applied to final utterance`)
+              }
+              pendingTurnGesture = null
+            } else {
+              console.log(`✨ Speech2Motion: Preserving gesture "${lowerG}" for subsequent utterance containing keyword`)
+            }
           }
         }
 
