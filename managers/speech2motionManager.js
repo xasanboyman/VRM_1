@@ -129,7 +129,7 @@ export class Speech2MotionManager {
     const envWsUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_SPEECH2MOTION_WS_URL : null
     const envApiUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_SPEECH2MOTION_URL : null
 
-    this.apiEndpoint = options.apiEndpoint || (envApiUrl ? `${envApiUrl.replace(/\/+$/, '')}/api/v3/speech2motion/generate` : '/api/speech2motion/generate')
+    this.apiEndpoint = options.apiEndpoint || (typeof window !== 'undefined' ? '/api/speech2motion/generate' : (envApiUrl ? `${envApiUrl.replace(/\/+$/, '')}/api/v3/speech2motion/generate` : '/api/speech2motion/generate'))
     this.avatarName = options.avatarName || 'Ani-default'
     this.enabled = options.enabled !== false
 
@@ -370,6 +370,24 @@ export class Speech2MotionManager {
       stretch: '伸懒腰',
       gun: '开枪',
       shoot: '开枪',
+    }
+
+    // Direct motion record ID mappings for 100% unadulterated mocap playback
+    this.gestureRecordMap = {
+      blow_kiss: 886,
+      blowkiss: 886,
+      kiss: 886,
+      mwah: 886,
+      '飞吻': 886,
+      wave: 887,
+      waving: 887,
+      hello: 887,
+      hi: 887,
+      greeting: 887,
+      '打招呼': 887,
+      thumbs_up: 888,
+      thumbsup: 888,
+      '竖起拇指': 888,
     }
   }
 
