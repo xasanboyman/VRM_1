@@ -10,6 +10,7 @@ import { TelegramManager } from './telegramManager.js'
 import { cacheManager } from './cacheManager.js'
 import { appUrl } from '../src/utils/appUrl.js'
 import { buildAiLanguagePreferenceInstruction, resolveLanguage } from '../src/i18n/ui.js'
+import { PHYSICAL_ACTION_KEYWORDS } from './speech2motionManager.js'
 
 export async function createVRMChatSystem(canvas, options = {}) {
   const {
@@ -287,11 +288,9 @@ export async function createVRMChatSystem(canvas, options = {}) {
       const handleUserSpeechStateChange = (isSpeaking) => {
         audioManager.setUserSpeakingState(isSpeaking)
         if (isSpeaking) {
-          // Only cancel if assistant is actively playing audio (actual user barge-in)
-          if (audioManager.isPlaying) {
-            cancelPendingUtterance?.()
-            animationManager?.setSpeakingState(false)
-          }
+          cancelPendingUtterance?.()
+          animationManager?.setSpeakingState(false)
+          animationManager?.speech2motion?.interruptSpeech()
         }
       }
 
@@ -341,6 +340,14 @@ export async function createVRMChatSystem(canvas, options = {}) {
         if (!animName) return
         pendingTurnGesture = animName
         turnActionGestureTriggered = true
+
+        // Cleanly wipe any stale queued tracks from previous turns so this action gesture runs immediately!
+        if (animationManager?.speech2motion) {
+          animationManager.speech2motion.speechTrackQueue = []
+          if (!animationManager.speech2motion.isActionGestureActive) {
+            animationManager.speech2motion.isSpeechActive = false
+          }
+        }
 
         // If an expression with same name exists (like cry/tears, blush, angry), trigger facial expression immediately!
         const exprCandidate = String(animName).toLowerCase().trim()
@@ -682,7 +689,14 @@ export async function createVRMChatSystem(canvas, options = {}) {
         }
 
         // 3. Pre-fetch motion track immediately in parallel so it is ready before current audio ends
-        const isAction = Boolean(timingInfo.motionKeywords && timingInfo.motionKeywords.length > 0)
+        const hasPhysicalActionKw = Boolean(
+          pendingTurnGesture ||
+          (timingInfo.motionKeywords && timingInfo.motionKeywords.some((item) => {
+            const kw = Array.isArray(item) ? item[1] : item
+            return PHYSICAL_ACTION_KEYWORDS.has(kw)
+          }))
+        )
+        const isAction = hasPhysicalActionKw
         const motionTrackPromise = animationManager?.speech2motion?.enabled
           ? animationManager.speech2motion.fetchSpeechTrack({
               speechText: utteranceText,

@@ -160,6 +160,29 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
   return { speechTime, motionKeywords }
 }
 
+export const PHYSICAL_ACTION_KEYWORDS = new Set([
+  '转圈',      // spin 360
+  '元气体操',  // dance
+  '江南style',  // gangnam style
+  '街舞',      // hip hop dance
+  '玛卡莲娜舞', // macarena
+  '后空翻',    // backflip
+  '比V',       // peace sign
+  '双手比V',   // double peace sign
+  '右手比V',   // right peace sign
+  '比心',      // heart fingers
+  '敬礼',      // salute
+  '鞠躬',      // bow
+  'OK手势',    // ok sign
+  '兔耳朵手势', // bunny ears
+  '开枪',      // finger gun
+  '双手抱胸',  // cross arms
+  '伸懒腰',    // stretch
+  '开心蹦跳',  // jump
+  '挑衅',      // taunt
+  '飞吻',      // blow kiss
+])
+
 /**
  * Speech2MotionManager
  * 
@@ -638,9 +661,18 @@ export class Speech2MotionManager {
     }
 
     let effectiveDuration = Math.max(1.0, duration)
-    if (motionKeywords && motionKeywords.length > 0) {
+    const hasPhysicalAction = Boolean(
+      isActionGesture ||
+      (motionKeywords && motionKeywords.some((item) => {
+        const kw = Array.isArray(item) ? item[1] : String(item)
+        return PHYSICAL_ACTION_KEYWORDS.has(kw)
+      }))
+    )
+
+    if (hasPhysicalAction && motionKeywords && motionKeywords.length > 0) {
       for (const kwItem of motionKeywords) {
         const kw = Array.isArray(kwItem) ? kwItem[1] : String(kwItem)
+        if (!PHYSICAL_ACTION_KEYWORDS.has(kw)) continue
         const charIdx = Array.isArray(kwItem) ? kwItem[0] : 0
         let kwTime = 0.0
         if (speechTime && speechTime.length > 0) {
@@ -709,7 +741,7 @@ export class Speech2MotionManager {
           const track = this._parseMotionPayload(data)
           track.is_idle = Boolean(isIdle)
           if (emotion) track.emotion = emotion
-          if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
+          if (track && hasPhysicalAction) {
             track.isActionGesture = true
           }
           return track
@@ -740,7 +772,7 @@ export class Speech2MotionManager {
             const track = this._parseMotionPayload(data)
             track.is_idle = Boolean(isIdle)
             if (emotion) track.emotion = emotion
-            if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
+            if (track && hasPhysicalAction) {
               track.isActionGesture = true
             }
             return track
@@ -1094,7 +1126,7 @@ export class Speech2MotionManager {
     this.idleBlendWeight = 0.0
     this._speechSilenceTimer = 0
 
-    const isAction = Boolean(track.isActionGesture || (track.motionKeywords && track.motionKeywords.length > 0))
+    const isAction = Boolean(track.isActionGesture)
     const item = {
       track,
       startTime: speechStartTime,
@@ -1108,7 +1140,7 @@ export class Speech2MotionManager {
 
     // Check if current action gesture is still in physical motion:
     // When executing an action (spin 360, peace sign, salute, dance, bow), NEVER stomp it mid-animation!
-    // Hold incoming tracks in queue until the physical action reaches completion!
+    // Hold incoming normal speech in queue until the physical action reaches completion!
     const isCurrentActionActive = Boolean(this.isActionGestureActive || this.currentTrack?.isActionGesture)
     const actionDur = this.currentTrack ? (this.currentTrack.duration || (this.currentTrack.nFrames / (this.currentTrack.fps || 30.0)) || 0) : 0
     const isActionStillPlaying = isCurrentActionActive && (this.playbackTime < (actionDur - 0.35))
@@ -1120,7 +1152,14 @@ export class Speech2MotionManager {
       (nowAudioTime < (this.speechStartTime + this.speechAudioDuration - 0.15)) &&
       (nowAudioTime < (speechStartTime - 0.25))
 
-    if (!isEarlierSpeechAudioActive && !isActionStillPlaying) {
+    // If incoming item is an explicit physical action gesture (e.g. spin), it takes precedence over normal speech!
+    // It should only queue if ANOTHER physical action is already actively playing.
+    const shouldQueue = isActionStillPlaying || (isEarlierSpeechAudioActive && !item.isActionGesture)
+
+    if (!shouldQueue) {
+      if (item.isActionGesture) {
+        this.speechTrackQueue = []
+      }
       // Activate immediately with smooth Hermite slerp blending from current pose
       this._activateSpeechTrack(item)
       return
