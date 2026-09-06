@@ -913,6 +913,7 @@ export class Speech2MotionManager {
     }
 
     const keyword = this.gestureKeywordMap[lower] || lower
+    const recordId = this.gestureRecordMap?.[lower] || this.gestureRecordMap?.[keyword] || null
 
     // Dedup guard: If this gesture was triggered within the last 4 seconds and is active, do not re-trigger
     const lastTrigger = this.recentActionGestures.get(keyword) || 0
@@ -926,13 +927,14 @@ export class Speech2MotionManager {
     this.isFetchingActionGesture = true
     this.isActionGestureActive = true
 
-    console.log(`✨ Speech2Motion: Triggering mocap gesture "${lower}" -> [${keyword}]`)
+    console.log(`✨ Speech2Motion: Triggering mocap gesture "${lower}" -> [${keyword}] (record: ${recordId || 'auto'})`)
     try {
       const track = await this._fetchTrack({
+        motionRecordId: recordId,
         speechText: keyword,
-        duration: 4.5,
+        duration: recordId ? 4.6 : 4.5,
         labelExpression: 'Happiness | Neutral',
-        motionKeywords: [[0, keyword]],
+        motionKeywords: recordId ? null : [[0, keyword]],
         isActionGesture: true,
       })
 
