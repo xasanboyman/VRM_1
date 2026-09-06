@@ -1,5 +1,41 @@
 import process from 'node:process'
 
+async function searchBingImages(query, maxResults = 20) {
+  try {
+    const url = 'https://www.bing.com/images/search?q=' + encodeURIComponent(query) + '&first=1'
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache'
+      }
+    })
+    if (!res.ok) return []
+    const text = await res.text()
+    const results = []
+    const regex = /m="({.+?})"/g
+    let match
+    while ((match = regex.exec(text)) !== null) {
+      try {
+        const decoded = match[1].replace(/&quot;/g, '"')
+        const data = JSON.parse(decoded)
+        if (data.murl && typeof data.murl === 'string' && data.murl.startsWith('http')) {
+          results.push({
+            title: data.t || query,
+            image: data.murl,
+            thumb: data.turl || data.murl
+          })
+          if (results.length >= maxResults) break
+        }
+      } catch (_) {}
+    }
+    return results
+  } catch (err) {
+    console.warn('Bing search failed:', err)
+    return []
+  }
+}
+
 export default async function handler(req, res) {
   try {
     const { q } = req.query
@@ -27,10 +63,35 @@ export default async function handler(req, res) {
     const wikimediaQuery = words.slice(0, 2).join(' ') || 'landscape'
     const loremFlickrTag = words[0] || 'landscape'
 
-    const usePlaywright = process.env.USE_PLAYWRIGHT === 'true'
+    // Strategy 0: Authoritative Oracle Cloud Server API (fast, high capacity, no Lambda timeout)
+    const oracleApiUrl = process.env.ORACLE_API_URL || 'https://xn--dr8haa.uz/oracle'
+    try {
+      const oracleRes = await fetch(`${oracleApiUrl}/api/search-image?q=${encodeURIComponent(ddgQuery)}`, {
+        signal: AbortSignal.timeout(3500)
+      })
+      if (oracleRes.ok) {
+        const oracleData = await oracleRes.json()
+        if (oracleData?.results && oracleData.results.length > 0) {
+          res.setHeader('Cache-Control', 'public, max-age=3600')
+          res.status(200).json(oracleData)
+          return
+        }
+      }
+    } catch (_) {
+      // Fall through to local strategies
+    }
 
+    // Strategy 1: High-Speed Direct Bing HD Search (instant, 20+ HD images, 100% Vercel compatible)
+    const bingResults = await searchBingImages(ddgQuery)
+    if (bingResults.length > 0) {
+      res.setHeader('Cache-Control', 'public, max-age=3600')
+      res.status(200).json({ results: bingResults })
+      return
+    }
+
+    // Strategy 2: Headless Playwright DuckDuckGo Search with Stealth Evasion (if enabled & installed)
+    const usePlaywright = process.env.USE_PLAYWRIGHT === 'true'
     if (usePlaywright) {
-      // Strategy 1: Headless Playwright DuckDuckGo Search with Stealth Evasion
       let browser = null
       try {
         const { chromium } = await import('playwright-extra')
@@ -51,29 +112,27 @@ export default async function handler(req, res) {
           ]
         })
         const context = await browser.newContext({
-          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           viewport: { width: 1280, height: 800 },
           locale: 'en-US',
           timezoneId: 'America/New_York'
         })
         const page = await context.newPage()
         
-        // Inject extra stealth webdriver properties
         await page.addInitScript(() => {
           try {
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            delete Object.getPrototypeOf(navigator).webdriver;
-          } catch (e) {}
-        });
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined })
+            delete Object.getPrototypeOf(navigator).webdriver
+          } catch (_) {}
+        })
 
         const searchUrl = 'https://duckduckgo.com/?q=' + encodeURIComponent(ddgQuery) + '&iar=images&iax=images&ia=images'
         await page.goto(searchUrl, {
           waitUntil: 'domcontentloaded',
-          timeout: 15000
+          timeout: 10000
         })
         
-        // Wait briefly for the page to initialize and generate VQD
-        await page.waitForTimeout(2000)
+        await page.waitForTimeout(1500)
         
         const html = await page.content()
         const match = html.match(/vqd\s*=\s*['"]?([^'&"<>]+)['"]?/) || 
@@ -82,80 +141,34 @@ export default async function handler(req, res) {
                       
         if (match) {
           const vqd = match[1]
-          // Request the search results internally within the page context to inherit the session/cookies
           const data = await page.evaluate(async ({ ddgQuery, vqd }) => {
             const response = await fetch(`https://duckduckgo.com/i.js?q=${encodeURIComponent(ddgQuery)}&o=json&vqd=${vqd}`)
             return await response.json()
           }, { ddgQuery, vqd })
           
           if (data && data.results && data.results.length > 0) {
+            res.setHeader('Cache-Control', 'public, max-age=3600')
             res.status(200).json(data)
             return
           }
         }
       } catch (e) {
-        console.warn('Playwright image search failed, falling back:', e)
+        console.warn('Playwright search error:', e?.message || e)
       } finally {
         if (browser) {
           try {
             await browser.close()
-          } catch (closeError) {
-            // Ignore close errors
-          }
-        }
-      }
-    } else {
-      // Strategy 2: Old fetch-based DuckDuckGo Search (lightweight, zero-dependency, Vercel-compatible)
-      let vqd = null
-      try {
-        const searchUrl = 'https://duckduckgo.com/?q=' + encodeURIComponent(ddgQuery)
-        const response = await fetch(searchUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Cache-Control': 'no-cache',
-            'Referer': 'https://duckduckgo.com/'
-          }
-        })
-        const html = await response.text()
-        const match = html.match(/vqd\s*=\s*['"]?([^'&"<>]+)['"]?/) || 
-                      html.match(/vqd\s*:\s*['"]?([^'&"<>]+)['"]?/) ||
-                      html.match(/vqd=([^&'"]+)/)
-        if (match) {
-          vqd = match[1]
-        }
-      } catch (e) {
-        console.warn('DuckDuckGo VQD fetch failed, trying fallbacks:', e)
-      }
-
-      // If VQD was found, query DuckDuckGo Image Search
-      if (vqd) {
-        try {
-          const imagesUrl = `https://duckduckgo.com/i.js?q=${encodeURIComponent(ddgQuery)}&o=json&vqd=${vqd}`
-          const imagesResponse = await fetch(imagesUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-              'Referer': 'https://duckduckgo.com/'
-            }
-          })
-          const data = await imagesResponse.json()
-          if (data && data.results && data.results.length > 0) {
-            res.status(200).json(data)
-            return
-          }
-        } catch (e) {
-          console.warn('DuckDuckGo image search query failed, trying fallback:', e)
+          } catch (_) {}
         }
       }
     }
 
-    // Strategy 3: Fallback to Unsplash Public Search (world's premium photo corpus, keyless napi)
+    // Strategy 3: Fallback to Unsplash Public Search
     try {
       const unsplashUrl = `https://unsplash.com/napi/search/photos?query=${encodeURIComponent(ddgQuery)}&per_page=15`
       const response = await fetch(unsplashUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           'Referer': 'https://unsplash.com/'
         }
       })
@@ -166,22 +179,23 @@ export default async function handler(req, res) {
             title: r.alt_description || r.description || 'Unsplash Image',
             image: r.urls.regular
           }))
+          res.setHeader('Cache-Control', 'public, max-age=3600')
           res.status(200).json({ results })
           return
         }
       }
     } catch (e) {
-      console.warn('Unsplash public search failed, trying next fallback:', e)
+      console.warn('Unsplash public search failed:', e)
     }
 
-    // Strategy 4: Fallback to Wikimedia Commons API (completely keyless and open to server environments)
+    // Strategy 4: Fallback to Wikimedia Commons API
     try {
       const commonsUrl = "https://commons.wikimedia.org/w/api.php?" + new URLSearchParams({
         action: "query",
         format: "json",
         generator: "search",
         gsrsearch: wikimediaQuery,
-        gsrnamespace: "6", // File namespace
+        gsrnamespace: "6",
         prop: "imageinfo",
         iiprop: "url|mime",
         gsrlimit: "15",
@@ -204,6 +218,7 @@ export default async function handler(req, res) {
           }))
         
         if (results.length > 0) {
+          res.setHeader('Cache-Control', 'public, max-age=3600')
           res.status(200).json({ results })
           return
         }
@@ -212,7 +227,7 @@ export default async function handler(req, res) {
       console.warn('Wikimedia fallback search failed:', e)
     }
 
-    // Strategy 5: Ultimate Fallback - Single-noun matching using LoremFlickr (strictly 1 tag, guaranteed to return a real, beautiful image)
+    // Strategy 5: Ultimate Fallback - Single-noun matching using LoremFlickr
     const randomSeed = Math.floor(Math.random() * 1000000)
     const fallbackImage = `https://loremflickr.com/1024/576/${loremFlickrTag}?random=${randomSeed}`
     
