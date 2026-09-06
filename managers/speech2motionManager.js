@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { stripExpressionCommands } from './aiClient.js'
+import { decodeSpeech2MotionResponse, encodeSpeech2MotionRequest } from './protobuf.js'
 
 /**
  * Extract word timestamps and detected motion keywords from speech text.
@@ -153,11 +154,10 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
 export class Speech2MotionManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
-    const DEFAULT_SPEECH2MOTION_URL = 'https://xn--dr8haa.uz/oracle/speech2motion'
-    const DEFAULT_SPEECH2MOTION_WS_URL = 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/speech2motion/ws'
+    const DEFAULT_SPEECH2MOTION_WS_URL = 'wss://xn--dr8haa.uz/oracle/speech2motion/api/v3/streaming_speech2motion/ws'
 
     const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_URL
-    this.apiEndpoint = options.apiEndpoint || (envUrl ? `${envUrl}/api/v3/speech2motion/generate` : `${DEFAULT_SPEECH2MOTION_URL}/api/v3/speech2motion/generate`)
+    this.apiEndpoint = options.apiEndpoint || null
     this.avatarName = options.avatarName || 'Ani-default'
     this.enabled = options.enabled !== false
 
@@ -179,7 +179,7 @@ export class Speech2MotionManager {
           const u = new URL(envUrl)
           const protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
           const basePath = u.pathname.replace(/\/+$/, '')
-          this.wsEndpoint = `${protocol}//${u.host}${basePath}/api/v3/speech2motion/ws`
+          this.wsEndpoint = `${protocol}//${u.host}${basePath}/api/v3/streaming_speech2motion/ws`
         } catch (_) {
           this.wsEndpoint = DEFAULT_SPEECH2MOTION_WS_URL
         }
@@ -187,11 +187,9 @@ export class Speech2MotionManager {
         this.wsEndpoint = DEFAULT_SPEECH2MOTION_WS_URL
       }
     }
+    this.wsEndpoint = this.wsEndpoint?.replace('/api/v3/speech2motion/ws', '/api/v3/streaming_speech2motion/ws')
     this.wsPendingRequests = new Map()
     this.wsReconnectTimer = null
-    if (this.wsEndpoint) {
-      this._initWebSocket()
-    }
 
     // Playback state
     this.currentTrack = null
@@ -563,83 +561,19 @@ export class Speech2MotionManager {
     isActionGesture = false,
   }) {
     const cleanSpeechText = (speechText && speechText !== '...') ? (stripExpressionCommands(speechText) || '...') : '...'
-    const payload = {
-      speech_text: cleanSpeechText,
-      duration: Math.max(1.0, duration),
-      avatar: this.avatarName,
-      app_name: 'babylon',
-      label_expression: labelExpression,
-    }
-    if (isIdle) payload.is_idle = true
-    if (emotion) payload.emotion = emotion
-    if (motionRecordId) payload.motion_record_id = motionRecordId
-    if (motionKeywords) {
-      payload.motion_keywords = Array.isArray(motionKeywords) ? motionKeywords : [motionKeywords]
-    }
-    if (speechTime && Array.isArray(speechTime)) {
-      payload.speech_time = speechTime
-    }
-
-    // 1. Ensure WebSocket connection is established and ready
-    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-      this._initWebSocket()
-    }
-
-    if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-      // Wait up to 1500ms for WebSocket handshake
-      await new Promise((resolve) => {
-        const timer = setTimeout(resolve, 1500)
-        const onOpen = () => { clearTimeout(timer); resolve() }
-        const onError = () => { clearTimeout(timer); resolve() }
-        this.ws?.addEventListener('open', onOpen, { once: true })
-        this.ws?.addEventListener('error', onError, { once: true })
-      })
-    }
-
-    // 2. Try low-latency WebSocket first
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      try {
-        const requestId = 'req_' + Math.random().toString(36).substring(2) + Date.now()
-        payload.request_id = requestId
-        const data = await this._sendWsRequest(payload, requestId, 6000)
-        if (data && data.ok && data.data_base64) {
-          const track = this._parseMotionPayload(data)
-          if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
-            track.isActionGesture = true
-          }
-          return track
-        }
-      } catch (wsErr) {
-        if (this.isOnline) {
-          console.warn('Speech2Motion WS request failed, falling back to HTTP:', wsErr)
-        }
-      }
-    }
-
-    // 2. Fallback to HTTP POST
     try {
-      const response = await fetch(this.apiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      const data = await this._requestOfficialTrack({
+        speechText: cleanSpeechText,
+        duration: Math.max(1.0, duration),
+        labelExpression,
+        motionKeywords: motionKeywords || [],
+        speechTime: speechTime || [],
       })
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          this._handleBackendOffline(404)
-          return null
-        }
-        throw new Error(`Server returned ${response.status}: ${await response.text()}`)
-      }
-
-      const data = await response.json()
-      if (!data.ok || !data.data_base64) {
-        throw new Error(data.error || 'Empty motion payload')
-      }
-
+      if (!data) throw new Error('Speech2Motion returned no motion data')
       this.isOnline = true
       this.consecutiveFailures = 0
       const track = this._parseMotionPayload(data)
+      track.is_idle = Boolean(isIdle)
       if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
         track.isActionGesture = true
       }
@@ -653,6 +587,97 @@ export class Speech2MotionManager {
       }
       return null
     }
+  }
+
+  /**
+   * Official dlp3d V3 streaming client. The published backend uses protobuf
+   * bytes over a one-request WebSocket stream; JSON and REST fallbacks cannot
+   * produce a valid motion clip from that service.
+   */
+  _requestOfficialTrack({ speechText, duration, labelExpression, motionKeywords, speechTime }) {
+    return new Promise((resolve, reject) => {
+      const requestId = `s2m_${Math.random().toString(36).slice(2)}${Date.now()}`
+      const ws = new WebSocket(this.wsEndpoint)
+      ws.binaryType = 'arraybuffer'
+      const chunks = []
+      let metadata = null
+      let settled = false
+      const close = () => { try { ws.close() } catch (_) {} }
+      const fail = (error) => {
+        if (settled) return
+        settled = true
+        close()
+        reject(error)
+      }
+      const succeed = (value) => {
+        if (settled) return
+        settled = true
+        close()
+        resolve(value)
+      }
+      const timer = setTimeout(() => fail(new Error('Speech2Motion inference timed out')), 15000)
+      const complete = (value, error = null) => {
+        clearTimeout(timer)
+        if (error) fail(error)
+        else succeed(value)
+      }
+
+      ws.onopen = () => {
+        ws.send(encodeSpeech2MotionRequest({
+          className: 'StreamingSpeech2MotionV3ChunkStart',
+          requestId,
+          userId: 'vrm-web-client',
+          avatar: this.avatarName,
+          appName: 'babylon',
+        }))
+        ws.send(encodeSpeech2MotionRequest({
+          className: 'StreamingSpeech2MotionV3ChunkBody',
+          requestId,
+          duration,
+          speechText,
+          sequenceNumber: 0,
+          speechTime,
+          motionKeywords,
+          labelExpression,
+        }))
+        ws.send(encodeSpeech2MotionRequest({
+          className: 'StreamingSpeech2MotionV3ChunkEnd', requestId }))
+      }
+      ws.onmessage = (event) => {
+        try {
+          const response = decodeSpeech2MotionResponse(event.data)
+          if (response.className === 'Speech2MotionV3ResponseChunkStart') {
+            metadata = response
+          } else if (response.className === 'Speech2MotionV3ResponseChunkBody') {
+            chunks.push(response.data)
+          } else if (response.className === 'Speech2MotionV3ResponseChunkEnd') {
+            if (!metadata || !chunks.length) throw new Error('Speech2Motion returned an empty motion stream')
+            const byteLength = chunks.reduce((size, chunk) => size + chunk.length, 0)
+            const bytes = new Uint8Array(byteLength)
+            let offset = 0
+            for (const chunk of chunks) {
+              bytes.set(chunk, offset)
+              offset += chunk.length
+            }
+            complete({
+              bytes,
+              joint_names: metadata.jointNames,
+              blendshape_names: metadata.blendshapeNames,
+              fps: 30,
+              duration,
+            })
+          } else if (response.className === 'LogResponse') {
+            throw new Error(response.log || 'Speech2Motion rejected the request')
+          }
+        } catch (error) {
+          complete(null, error)
+        }
+      }
+      ws.onerror = () => complete(null, new Error('Speech2Motion WebSocket connection failed'))
+      ws.onclose = () => {
+        if (!settled) complete(null, new Error('Speech2Motion closed before completing inference'))
+      }
+    })
   }
 
   _handleBackendOffline(reason) {
@@ -1162,15 +1187,19 @@ export class Speech2MotionManager {
    * Parse the binary flat bytes payload into an indexed keyframe track with skirt clearance.
    */
   _parseMotionPayload(data) {
-    const binaryString = atob(data.data_base64)
-    const len = binaryString.length
-    const bytes = new Uint8Array(len)
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binaryString.charCodeAt(i)
+    let bytes
+    if (data.bytes instanceof Uint8Array) {
+      bytes = data.bytes
+    } else {
+      const binaryString = atob(data.data_base64)
+      bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i)
     }
 
-    const floatView = new Float32Array(bytes.buffer)
-    const nFrames = data.n_frames
+    // A response may start at a byte offset within an ArrayBuffer. Copy only
+    // when needed so Float32Array remains correctly aligned on every browser.
+    if (bytes.byteOffset % 4 !== 0) bytes = bytes.slice()
+    const floatView = new Float32Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 4))
     const fps = data.fps || 30.0
     const jointNames = data.joint_names || []
     const blendshapeNames = data.blendshape_names || []
@@ -1179,6 +1208,10 @@ export class Speech2MotionManager {
 
     // Row stride: nJoints * 9 (rotations) + 3 (root pos) + 3 (cutoff marks) + nBlendshapes
     const stride = nJoints * 9 + 6 + nBlendshapes
+    const nFrames = data.n_frames || Math.floor(floatView.length / stride)
+    if (!nJoints || !nFrames || floatView.length < nFrames * stride) {
+      throw new Error('Speech2Motion returned an invalid motion frame layout')
+    }
 
     const frames = []
 

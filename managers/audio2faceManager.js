@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { decodeAudio2FaceResponse, encodeAudio2FaceRequest, float32FromBytes } from './protobuf.js'
 
 /**
  * Audio2FaceManager
@@ -17,27 +18,30 @@ import * as THREE from 'three'
 export class Audio2FaceManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
-    const DEFAULT_AUDIO2FACE_URL = 'https://xn--dr8haa.uz/oracle/audio2face'
-    const DEFAULT_AUDIO2FACE_WS_URL = 'wss://xn--dr8haa.uz/oracle/audio2face/api/v1/audio2face/ws'
-    const envUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_AUDIO2FACE_URL
+    // Official dlp3d Audio2Face V1 endpoint.  It is a protobuf binary stream,
+    // not the JSON endpoint used by earlier development-only clients.
+    const DEFAULT_AUDIO2FACE_WS_URL = 'wss://xn--dr8haa.uz/oracle/audio2face/api/v1/streaming_audio2face/ws'
     const envWsUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_AUDIO2FACE_WS_URL
-    this.apiEndpoint = options.apiEndpoint || (envUrl ? `${envUrl}/api/v1/audio2face/generate` : `${DEFAULT_AUDIO2FACE_URL}/api/v1/audio2face/generate`)
-    this.wsEndpoint = options.wsEndpoint || (envWsUrl || DEFAULT_AUDIO2FACE_WS_URL)
+    this.apiEndpoint = options.apiEndpoint || null
+    this.wsEndpoint = (options.wsEndpoint || envWsUrl || DEFAULT_AUDIO2FACE_WS_URL)
+      .replace('/api/v1/audio2face/ws', '/api/v1/streaming_audio2face/ws')
     this.profileName = options.profileName || 'Ani-default'
     this.enabled = options.enabled !== false
     this.isAvailable = true
     this.failureCount = 0
-    this.sampleRate = options.sampleRate || 24000
+    // Gemini Live supplies 24 kHz PCM, while the upstream UniTalker model is
+    // trained for 16 kHz input. Keep both rates explicit so audio playback is
+    // untouched and only the inference copy is resampled.
+    this.inputSampleRate = options.inputSampleRate || 24000
+    this.sampleRate = options.sampleRate || 16000
     this.smoothingFactor = options.smoothingFactor || 0.65
     this.blendshapeMultiplier = options.blendshapeMultiplier || 1.15
 
-    // Persistent WebSocket for real-time low-latency neural lip-sync
+    // Each official request is a short protobuf stream (start/body/end). A
+    // socket therefore cannot be shared between unrelated utterances.
     this.ws = null
     this.wsPendingRequests = new Map()
     this.wsReconnectTimer = null
-    if (this.enabled && this.wsEndpoint) {
-      this._initWebSocket()
-    }
 
     // Playback state
     this.currentTimeline = null
@@ -48,7 +52,7 @@ export class Audio2FaceManager {
     // Audio batch accumulation
     this.pendingAudioChunks = []
     this.pendingAudioSamples = 0
-    this.minBatchSamples = Math.floor(this.sampleRate * 0.4) // 400ms min batch
+    this.minBatchSamples = Math.floor(this.inputSampleRate * 0.4) // 400ms min batch
     this.isDispatching = false
 
     // Fallback callback if needed
@@ -224,6 +228,93 @@ export class Audio2FaceManager {
     })
   }
 
+  _resamplePcm16(source, inputRate = this.inputSampleRate, outputRate = this.sampleRate) {
+    if (inputRate === outputRate) return source
+    const outputLength = Math.max(1, Math.round(source.length * outputRate / inputRate))
+    const output = new Int16Array(outputLength)
+    const ratio = inputRate / outputRate
+    for (let index = 0; index < outputLength; index++) {
+      const position = index * ratio
+      const before = Math.floor(position)
+      const after = Math.min(before + 1, source.length - 1)
+      const amount = position - before
+      output[index] = Math.round(source[before] * (1 - amount) + source[after] * amount)
+    }
+    return output
+  }
+
+  /**
+   * Send one PCM utterance through the official Audio2Face protobuf protocol.
+   * The response is deliberately collected before playback starts so its first
+   * viseme frame shares the exact Web Audio start clock with the sound.
+   */
+  _generateOfficialTimeline(pcmBytes, requestId) {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(this.wsEndpoint)
+      ws.binaryType = 'arraybuffer'
+      const names = []
+      const frames = []
+      let settled = false
+      const finish = (value, error = null) => {
+        if (settled) return
+        settled = true
+        try { ws.close() } catch (_) {}
+        if (error) reject(error)
+        else resolve(value)
+      }
+      const timer = setTimeout(() => finish(null, new Error('Audio2Face inference timed out')), 12000)
+      const resolveOnce = (value, error = null) => {
+        clearTimeout(timer)
+        finish(value, error)
+      }
+
+      ws.onopen = () => {
+        ws.send(encodeAudio2FaceRequest({
+          className: 'StreamingAudio2FaceV1ChunkStart',
+          requestId,
+          sampleRate: this.sampleRate,
+          sampleWidth: 2,
+          channels: 1,
+          profileName: this.profileName,
+          responseChunkFrames: 10,
+        }))
+        ws.send(encodeAudio2FaceRequest({
+          className: 'StreamingAudio2FaceV1ChunkBody',
+          requestId,
+          pcmBytes,
+        }))
+        ws.send(encodeAudio2FaceRequest({
+          className: 'StreamingAudio2FaceV1ChunkEnd',
+          requestId,
+        }))
+      }
+      ws.onmessage = (event) => {
+        try {
+          const response = decodeAudio2FaceResponse(event.data)
+          if (response.className === 'Audio2FaceV1ResponseChunkStart') {
+            names.splice(0, names.length, ...response.blendshapeNames)
+          } else if (response.className === 'Audio2FaceV1ResponseChunkBody') {
+            const values = float32FromBytes(response.data)
+            if (!names.length || values.length % names.length !== 0) {
+              throw new Error('Audio2Face returned an invalid blendshape frame')
+            }
+            for (let i = 0; i < values.length; i += names.length) {
+              frames.push(Array.from(values.slice(i, i + names.length)))
+            }
+          } else if (response.className === 'Audio2FaceV1ResponseChunkEnd') {
+            resolveOnce({ fps: 30, blendshape_names: names, weights: frames })
+          }
+        } catch (error) {
+          resolveOnce(null, error)
+        }
+      }
+      ws.onerror = () => resolveOnce(null, new Error('Audio2Face WebSocket connection failed'))
+      ws.onclose = () => {
+        if (!settled) resolveOnce(null, new Error('Audio2Face closed before completing inference'))
+      }
+    })
+  }
+
   /**
    * Flush all accumulated audio and trigger neural blendshape inference.
    */
@@ -251,68 +342,11 @@ export class Audio2FaceManager {
         offset += chunk.length
       }
 
-      // Base64 encode
-      const uint8 = new Uint8Array(mergedPcm.buffer, mergedPcm.byteOffset, mergedPcm.byteLength)
-      let binary = ''
-      const len = uint8.byteLength
-      for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(uint8[i])
-      }
-      const b64 = btoa(binary)
-
+      const modelPcm = this._resamplePcm16(mergedPcm)
+      const uint8 = new Uint8Array(modelPcm.buffer, modelPcm.byteOffset, modelPcm.byteLength)
       const requestId = 'a2f_' + Math.random().toString(36).substring(2) + Date.now()
-      const payload = {
-        request_id: requestId,
-        audio_base64: b64,
-        sample_rate: this.sampleRate,
-        profile_name: this.profileName
-      }
-
-      // 1. Ensure WebSocket is connected
-      if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
-        this._initWebSocket()
-      }
-
-      if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
-        // Wait briefly for handshake
-        await new Promise((resolve) => {
-          const timer = setTimeout(resolve, 800)
-          const onOpen = () => { clearTimeout(timer); resolve() }
-          const onError = () => { clearTimeout(timer); resolve() }
-          this.ws?.addEventListener('open', onOpen, { once: true })
-          this.ws?.addEventListener('error', onError, { once: true })
-        })
-      }
-
-      let res = null
-      // 2. Ultra low-latency WebSocket first
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        try {
-          res = await this._sendWsRequest(payload, requestId, 5000)
-        } catch (wsErr) {
-          console.warn('Audio2Face WS request failed, falling back to HTTP:', wsErr)
-        }
-      }
-
-      // 3. Fallback to HTTP POST if WebSocket unavailable
-      if (!res || !res.ok) {
-        const response = await fetch(this.apiEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            console.info(`ℹ️ Audio2Face service connection pending at ${this.apiEndpoint}...`)
-            return
-          }
-          throw new Error(`Audio2Face server returned ${response.status}: ${await response.text()}`)
-        }
-        res = await response.json()
-      }
-
-      if (res && res.ok && Array.isArray(res.weights) && res.weights.length > 0) {
+      const res = await this._generateOfficialTimeline(uint8, requestId)
+      if (res?.weights?.length > 0) {
         this.failureCount = 0
         this._appendTimeline(res, speechStartTime)
       }
