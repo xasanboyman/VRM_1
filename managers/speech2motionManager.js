@@ -169,15 +169,10 @@ export class Speech2MotionManager {
     this.wsReconnectAttempts = 0
     this.maxWsReconnectAttempts = 1
 
-    // 1. Persistent low-latency JSON WebSocket (streaming generation)
+    // 1. Persistent low-latency JSON WebSocket (single long-lived connection)
     this.ws = null
-    this.wsEndpoint = options.wsEndpoint || DEFAULT_SPEECH2MOTION_WS_URL
-    if (typeof window !== 'undefined') {
-      const envWsUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_WS_URL
-      if (envWsUrl && !envWsUrl.includes('streaming_speech2motion')) {
-        this.wsEndpoint = envWsUrl
-      }
-    }
+    const rawWsUrl = options.wsEndpoint || ((typeof import.meta !== 'undefined' && import.meta.env?.VITE_SPEECH2MOTION_WS_URL) || DEFAULT_SPEECH2MOTION_WS_URL)
+    this.wsEndpoint = rawWsUrl.includes('streaming_speech2motion') ? DEFAULT_SPEECH2MOTION_WS_URL : rawWsUrl
 
     // 2. Official Protobuf WebSocket (fallback)
     this.protobufWsEndpoint = DEFAULT_SPEECH2MOTION_PROTO_WS_URL
@@ -695,33 +690,12 @@ export class Speech2MotionManager {
       }
     }
 
-    // 4. Fallback to official protobuf streaming if server only provides /api/v3/streaming_speech2motion/ws
-    try {
-      const data = await this._requestOfficialTrack({
-        speechText: cleanSpeechText,
-        duration: effectiveDuration,
-        labelExpression,
-        motionKeywords: motionKeywords || [],
-        speechTime: speechTime || [],
-      })
-      if (data) {
-        this.isOnline = true
-        this.consecutiveFailures = 0
-        const track = this._parseMotionPayload(data)
-        track.is_idle = Boolean(isIdle)
-        if (emotion) track.emotion = emotion
-        if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
-          track.isActionGesture = true
-        }
-        return track
-      }
-    } catch (pbErr) {
-      this.consecutiveFailures++
-      if (this.consecutiveFailures >= 2 || !this.isOnline) {
-        this._handleBackendOffline(pbErr.message || pbErr)
-      } else {
-        console.warn('Speech2Motion fetch failed across all protocols:', pbErr)
-      }
+    // 4. Failed across persistent WebSocket and HTTP POST
+    this.consecutiveFailures++
+    if (this.consecutiveFailures >= 2 || !this.isOnline) {
+      this._handleBackendOffline('Speech2Motion backend unreachable')
+    } else {
+      console.warn('Speech2Motion fetch failed, will retry next frame')
     }
 
     return null

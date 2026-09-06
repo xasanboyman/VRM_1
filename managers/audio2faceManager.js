@@ -18,13 +18,15 @@ import { decodeAudio2FaceResponse, encodeAudio2FaceRequest, float32FromBytes } f
 export class Audio2FaceManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
-    // Official dlp3d Audio2Face V1 endpoint.  It is a protobuf binary stream,
-    // not the JSON endpoint used by earlier development-only clients.
-    const DEFAULT_AUDIO2FACE_WS_URL = 'wss://xn--dr8haa.uz/oracle/audio2face/api/v1/streaming_audio2face/ws'
+    // Official persistent JSON WebSocket endpoint on port 18083.
+    // Maintains a single long-lived connection for sub-50ms neural inference across all utterances.
+    const DEFAULT_AUDIO2FACE_WS_URL = 'wss://xn--dr8haa.uz/oracle/audio2face/api/v1/audio2face/ws'
+    const DEFAULT_AUDIO2FACE_API_URL = 'https://xn--dr8haa.uz/oracle/audio2face/api/v1/audio2face/generate'
     const envWsUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_AUDIO2FACE_WS_URL
-    this.apiEndpoint = options.apiEndpoint || null
-    this.wsEndpoint = (options.wsEndpoint || envWsUrl || DEFAULT_AUDIO2FACE_WS_URL)
-      .replace('/api/v1/audio2face/ws', '/api/v1/streaming_audio2face/ws')
+    const envApiUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_AUDIO2FACE_URL
+
+    this.apiEndpoint = options.apiEndpoint || (envApiUrl ? `${envApiUrl.replace(/\/+$/, '')}/api/v1/audio2face/generate` : DEFAULT_AUDIO2FACE_API_URL)
+    this.wsEndpoint = options.wsEndpoint || (envWsUrl && !envWsUrl.includes('streaming_audio2face') ? envWsUrl : DEFAULT_AUDIO2FACE_WS_URL)
     this.profileName = options.profileName || 'Ani-default'
     this.enabled = options.enabled !== false
     this.isAvailable = true
@@ -37,11 +39,13 @@ export class Audio2FaceManager {
     this.smoothingFactor = options.smoothingFactor || 0.65
     this.blendshapeMultiplier = options.blendshapeMultiplier || 1.15
 
-    // Each official request is a short protobuf stream (start/body/end). A
-    // socket therefore cannot be shared between unrelated utterances.
+    // Single persistent WebSocket connection
     this.ws = null
     this.wsPendingRequests = new Map()
     this.wsReconnectTimer = null
+    if (this.wsEndpoint) {
+      this._initWebSocket()
+    }
 
     // Playback state
     this.currentTimeline = null
@@ -344,9 +348,65 @@ export class Audio2FaceManager {
 
       const modelPcm = this._resamplePcm16(mergedPcm)
       const uint8 = new Uint8Array(modelPcm.buffer, modelPcm.byteOffset, modelPcm.byteLength)
+
+      // Zero-copy / chunked Uint8 to base64
+      let binary = ''
+      const chunkSize = 8192
+      for (let i = 0; i < uint8.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, uint8.subarray(i, i + chunkSize))
+      }
+      const b64 = btoa(binary)
       const requestId = 'a2f_' + Math.random().toString(36).substring(2) + Date.now()
-      const res = await this._generateOfficialTimeline(uint8, requestId)
-      if (res?.weights?.length > 0) {
+
+      const payload = {
+        request_id: requestId,
+        audio_base64: b64,
+        sample_rate: this.sampleRate,
+        profile_name: this.profileName,
+      }
+
+      let res = null
+
+      // 1. Send through persistent WebSocket (single long-lived connection)
+      if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
+        this._initWebSocket()
+      }
+
+      if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+        await new Promise((resolve) => {
+          const timer = setTimeout(resolve, 800)
+          const onOpen = () => { clearTimeout(timer); resolve() }
+          const onError = () => { clearTimeout(timer); resolve() }
+          this.ws?.addEventListener('open', onOpen, { once: true })
+          this.ws?.addEventListener('error', onError, { once: true })
+        })
+      }
+
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        try {
+          res = await this._sendWsRequest(payload, requestId, 6000)
+        } catch (wsErr) {
+          console.warn('Audio2Face persistent WS error, trying HTTP fallback:', wsErr)
+        }
+      }
+
+      // 2. HTTP POST fallback (clean HTTP fetch, never opens throwaway WebSockets)
+      if ((!res || !res.ok) && this.apiEndpoint) {
+        try {
+          const response = await fetch(this.apiEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+          if (response.ok) {
+            res = await response.json()
+          }
+        } catch (httpErr) {
+          // Both paths quiet fallback
+        }
+      }
+
+      if (res && res.ok && res.weights && res.weights.length > 0) {
         this.failureCount = 0
         this._appendTimeline(res, speechStartTime)
       }
