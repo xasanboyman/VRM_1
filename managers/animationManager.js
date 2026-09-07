@@ -1225,7 +1225,13 @@ export class AnimationManager {
     ]
     const isWholeBodyEmotion = wholeBodyEmotions.includes(String(name || '').toLowerCase().trim())
 
-    if (this.speech2motion && this.speech2motion.enabled && !this.speech2motion.isActionGestureActive) {
+    const hasActionGesture = Boolean(
+      this.speech2motion?.isActionGestureActive ||
+      this.speech2motion?.isFetchingActionGesture ||
+      this.speech2motion?.currentTrack?.isActionGesture
+    )
+
+    if (this.speech2motion && this.speech2motion.enabled && !hasActionGesture) {
       if (isWholeBodyEmotion) {
         if (!this.speech2motion.isSpeechActive) {
           this.speech2motion.triggerEmotion(name)

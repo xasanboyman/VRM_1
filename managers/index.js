@@ -324,6 +324,9 @@ export async function createVRMChatSystem(canvas, options = {}) {
       const triggerAnimation = (animName) => {
         if (!animName) return
         pendingTurnGesture = animName
+        if (animationManager?.speech2motion) {
+          animationManager.speech2motion.isActionGestureActive = true
+        }
         // Always keep gesture pending so it merges into the next speech dispatch
         // and plays synchronized with the voice audio, not before it.
         console.log(`✨ Speech2Motion: Triggering mocap gesture "${animName}" -> will sync with speech`)
@@ -497,6 +500,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
           : { speechTime: null, motionKeywords: null }
 
         // If a gesture tool was called for this turn (e.g. trigger_gesture), seamlessly merge it into speech motion!
+        let turnRecordId = null
         if (pendingTurnGesture) {
           const gestureMap = {
             salute: '敬礼',
@@ -513,9 +517,11 @@ export async function createVRMChatSystem(canvas, options = {}) {
             shrug: '摊手',
             bow: '鞠躬',
             clap: '鼓掌',
+            clapping: '鼓掌',
             hands_on_hips: '叉腰',
             facepalm: '捂脸',
             cheer: '加油',
+            cheering: '加油',
             thinking: '思考',
             nod: '点头',
             shake_head: '摇头',
@@ -531,18 +537,22 @@ export async function createVRMChatSystem(canvas, options = {}) {
             gun: '开枪',
             hands_up: '举手',
             blow_kiss: '飞吻',
+            blowkiss: '飞吻',
             kiss: '飞吻',
             mwah: '飞吻',
           }
           const lowerG = String(pendingTurnGesture).toLowerCase().trim().replace(/[\s-]+/g, '_')
           const mappedKw = gestureMap[lowerG] || pendingTurnGesture
+          turnRecordId = animationManager?.speech2motion?.gestureRecordMap?.[lowerG] ||
+                         animationManager?.speech2motion?.gestureRecordMap?.[mappedKw] || null
+
           if (!timingInfo.motionKeywords) timingInfo.motionKeywords = []
           timingInfo.motionKeywords.unshift([0, mappedKw])
           pendingTurnGesture = null
         }
 
         // 3. Pre-fetch motion track immediately in parallel so it is ready before current audio ends
-        const isAction = Boolean(timingInfo.motionKeywords && timingInfo.motionKeywords.length > 0)
+        const isAction = Boolean(turnRecordId || (timingInfo.motionKeywords && timingInfo.motionKeywords.length > 0))
         const motionTrackPromise = animationManager?.speech2motion?.enabled
           ? animationManager.speech2motion.fetchSpeechTrack({
               speechText: utteranceText,
@@ -551,6 +561,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
               motionKeywords: timingInfo.motionKeywords,
               emotion: (activeEmotion && activeEmotion !== 'idle') ? activeEmotion : null,
               labelExpression: 'Happiness | Neutral',
+              motionRecordId: turnRecordId,
               isActionGesture: isAction,
             }).catch((err) => {
               console.warn('Speech2Motion pre-fetch error:', err)
