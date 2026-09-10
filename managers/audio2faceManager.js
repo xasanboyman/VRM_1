@@ -17,7 +17,11 @@ import * as THREE from 'three'
 export class Audio2FaceManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
-    this.apiEndpoint = options.apiEndpoint || '/api/audio2face/generate'
+    const envApiUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AUDIO2FACE_URL : null
+    const defaultEndpoint = envApiUrl
+      ? `${envApiUrl.replace(/\/+$/, '')}/api/v1/audio2face/generate`
+      : '/api/audio2face/generate'
+    this.apiEndpoint = options.apiEndpoint || defaultEndpoint
     this.profileName = options.profileName || 'Ani-default'
     this.enabled = options.enabled !== false
     this.sampleRate = options.sampleRate || 24000

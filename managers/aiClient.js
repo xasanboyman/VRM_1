@@ -2214,6 +2214,26 @@ export class AIClient {
             },
           },
           {
+            name: 'set_expression',
+            description:
+              'Change the facial expression of the 3D avatar (e.g. blush, crying, dizzy, happy, angry, sad, surprised, relaxed, neutral).',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                expression: {
+                  type: 'STRING',
+                  description:
+                    'Facial expression name. Allowed values: blush, crying, tears, dizzy, happy, angry, sad, surprised, relaxed, neutral, wink.',
+                },
+                duration: {
+                  type: 'NUMBER',
+                  description: 'Duration in seconds for the expression to stay active (default: 4.0).',
+                },
+              },
+              required: ['expression'],
+            },
+          },
+          {
             name: 'set_background_image',
             description: 'Change the background image of the 3D scene. The AI can generate a background based on a prompt or describe a scene to load.',
             parameters: {

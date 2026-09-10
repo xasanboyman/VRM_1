@@ -248,7 +248,10 @@ export class Speech2MotionManager {
     const envWsUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_SPEECH2MOTION_WS_URL : null
     const envApiUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_SPEECH2MOTION_URL : null
 
-    this.apiEndpoint = options.apiEndpoint || (typeof window !== 'undefined' ? '/api/speech2motion/generate' : (envApiUrl ? `${envApiUrl.replace(/\/+$/, '')}/api/v3/speech2motion/generate` : '/api/speech2motion/generate'))
+    const defaultHttpEndpoint = envApiUrl
+      ? `${envApiUrl.replace(/\/+$/, '')}/api/v3/speech2motion/generate`
+      : '/api/speech2motion/generate'
+    this.apiEndpoint = options.apiEndpoint || defaultHttpEndpoint
     this.avatarName = options.avatarName || 'Ani-default'
     this.enabled = options.enabled !== false
 
