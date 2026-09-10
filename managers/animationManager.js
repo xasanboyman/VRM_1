@@ -183,8 +183,9 @@ const EXPRESSION_ALIASES = {
   blush: ['blush', '照れ', 'blush_lines', '////'],
   '照れ': ['照れ', 'blush', 'blush_lines', '////'],
 
-  tears: ['tears', '涙'],
-  '涙': ['涙', 'tears'],
+  tears: ['tears', '涙', 'crying'],
+  '涙': ['涙', 'tears', 'crying'],
+  crying: ['crying', 'tears', '涙'],
 
   blush_lines: ['blush_lines', '////', 'blush', '照れ'],
   '////': ['////', 'blush_lines', '照れ', 'blush'],

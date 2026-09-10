@@ -106,7 +106,7 @@ export class VRMLoader {
 
     const isLegacyVrm0 = vrm.meta?.metaVersion === '0' || vrm.meta?.specVersion === '0.0'
     const isRiko = vrm.meta?.title === 'Riko' || vrm.meta?.name === 'Riko'
-    vrm.scene.rotation.y = isRiko ? Math.PI : 0
+    vrm.scene.rotation.y = (isRiko || isLegacyVrm0) ? Math.PI : 0
     vrm.scene.scale.set(2, 2, 2)
     vrm.scene.position.set(0, -1.2, -0.3)
 
@@ -118,6 +118,9 @@ export class VRMLoader {
         child.castShadow = true
         child.receiveShadow = true
         child.frustumCulled = false
+        if (child.name === 'emotions' || child.material?.name === 'Emotions2') {
+          child.renderOrder = 20
+        }
       }
     })
 

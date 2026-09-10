@@ -81,9 +81,9 @@ export async function createVRMChatSystem(canvas, options = {}) {
     telegramManager.notifyLog(eventMessage, context).catch(() => {})
   }
 
-  // Strategy: Try local Ani model first, then local riko, then remote fallback.
-  const localModelPath = '/models/Ani.vrm'
-  const fallbackLocalPath = '/models/riko.vrm'
+  // Strategy: Try local student model first, then local Ani, then remote fallback.
+  const localModelPath = '/models/student.vrm'
+  const fallbackLocalPath = '/models/Ani.vrm'
   const remoteModelUrl =
     'https://raw.githubusercontent.com/lucyakkount-cyber/VRM_1/main/public/models/riko.vrm'
 
