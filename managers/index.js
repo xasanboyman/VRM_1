@@ -116,7 +116,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
         animationManager.speech2motion.audioManager = audioManager
       }
       await animationManager.initialize({
-        initialAnimations: ['Unarmed_idle01'],
+        initialAnimations: ['NeutralIdle'],
         loadRemainingInBackground: true,
         onProgress: ({ current, total, name }) => {
           const ratio = total > 0 ? current / total : 1
