@@ -107,6 +107,125 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
   return { speechTime, motionKeywords }
 }
 
+// Mapping from Speech2Motion joint names to VRM humanoid bone names
+export const S2M_TO_VRM_MAP = {
+  Hips: 'hips',
+  Spine: 'spine',
+  Chest: 'chest',
+  Neck: 'neck',
+  Head: 'head',
+  Left_shoulder: 'leftShoulder',
+  Left_arm: 'leftUpperArm',
+  Left_elbow: 'leftLowerArm',
+  Left_wrist: 'leftHand',
+  Right_shoulder: 'rightShoulder',
+  Right_arm: 'rightUpperArm',
+  Right_elbow: 'rightLowerArm',
+  Right_wrist: 'rightHand',
+  Left_leg: 'leftUpperLeg',
+  Left_knee: 'leftLowerLeg',
+  Left_ankle: 'leftFoot',
+  Left_toe: 'leftToes',
+  Right_leg: 'rightUpperLeg',
+  Right_knee: 'rightLowerLeg',
+  Right_ankle: 'rightFoot',
+  Right_toe: 'rightToes',
+  Eye_L: 'leftEye',
+  Eye_R: 'rightEye',
+  Thumb0_L: 'leftThumbMetacarpal',
+  Thumb1_L: 'leftThumbProximal',
+  Thumb2_L: 'leftThumbDistal',
+  Thumb0_R: 'rightThumbMetacarpal',
+  Thumb1_R: 'rightThumbProximal',
+  Thumb2_R: 'rightThumbDistal',
+  IndexFinger1_L: 'leftIndexProximal',
+  IndexFinger2_L: 'leftIndexIntermediate',
+  IndexFinger3_L: 'leftIndexDistal',
+  IndexFinger1_R: 'rightIndexProximal',
+  IndexFinger2_R: 'rightIndexIntermediate',
+  IndexFinger3_R: 'rightIndexDistal',
+  MiddleFinger1_L: 'leftMiddleProximal',
+  MiddleFinger2_L: 'leftMiddleIntermediate',
+  MiddleFinger3_L: 'leftMiddleDistal',
+  MiddleFinger1_R: 'rightMiddleProximal',
+  MiddleFinger2_R: 'rightMiddleIntermediate',
+  MiddleFinger3_R: 'rightMiddleDistal',
+  RingFinger1_L: 'leftRingProximal',
+  RingFinger2_L: 'leftRingIntermediate',
+  RingFinger3_L: 'leftRingDistal',
+  RingFinger1_R: 'rightRingProximal',
+  RingFinger2_R: 'rightRingIntermediate',
+  RingFinger3_R: 'rightRingDistal',
+  LittleFinger1_L: 'leftLittleProximal',
+  LittleFinger2_L: 'leftLittleIntermediate',
+  LittleFinger3_L: 'leftLittleDistal',
+  LittleFinger1_R: 'rightLittleProximal',
+  LittleFinger2_R: 'rightLittleIntermediate',
+  LittleFinger3_R: 'rightLittleDistal'
+}
+
+// Canonical Ani rig rest quaternions for delta retargeting onto standard VRM models
+const ANI_REST_QUATS = {
+  Hips: [0, 0, 0, 1],
+  Spine: [0.056206, 0.000001, 0.000001, 0.998419],
+  Chest: [-0.180445, -0.000001, -0.000002, 0.983585],
+  Neck: [0.180308, 0.000002, 0.000002, 0.98361],
+  Head: [-0.056068, -0.000002, -0.000002, 0.998427],
+  Left_shoulder: [-0.589043, -0.416526, -0.536471, 0.437873],
+  Left_arm: [0.126936, -0.15888, -0.060243, 0.977249],
+  Left_elbow: [0, 0, 0, 1],
+  Left_wrist: [0, 0, 0, 1],
+  Right_shoulder: [-0.589043, 0.416526, 0.536472, 0.437872],
+  Right_arm: [0.126936, 0.15888, 0.060243, 0.977249],
+  Right_elbow: [0, 0, 0, 1],
+  Right_wrist: [0, 0, 0, 1],
+  Left_leg: [-0.999478, 0.022779, 0.022779, 0.002375],
+  Left_knee: [0.047646, 0.010985, -0.013214, 0.998716],
+  Left_ankle: [-0.399883, 0.013733, -0.006199, 0.916442],
+  Left_toe: [0, -0.911439, 0.411436, 0.000001],
+  Right_leg: [-0.999478, -0.022779, -0.022779, 0.002375],
+  Right_knee: [0.047646, -0.010985, 0.013214, 0.998716],
+  Right_ankle: [-0.399884, -0.013733, 0.006199, 0.916442],
+  Right_toe: [0, 0.911439, -0.411436, 0],
+  Eye_L: [0, 0, 0, 1],
+  Eye_R: [0, 0, 0, 1],
+  Thumb0_L: [-0.302765, -0.164176, -0.139491, 0.928398],
+  Thumb1_L: [0.050285, 0.040521, 0.014196, 0.997812],
+  Thumb2_L: [-0.004866, 0.009476, -0.011997, 0.999871],
+  Thumb0_R: [-0.302765, 0.164176, 0.139491, 0.928398],
+  Thumb1_R: [0.050285, -0.04052, -0.014195, 0.997812],
+  Thumb2_R: [-0.004867, -0.009476, 0.011994, 0.999871],
+  IndexFinger1_L: [0.033808, 0.036291, -0.016419, 0.998634],
+  IndexFinger2_L: [-0.031444, -0.036443, 0.020698, 0.998626],
+  IndexFinger3_L: [0.046409, 0.052738, -0.028665, 0.997117],
+  IndexFinger1_R: [0.033808, -0.036291, 0.016419, 0.998634],
+  IndexFinger2_R: [-0.031444, 0.036441, -0.020698, 0.998626],
+  IndexFinger3_R: [0.046408, -0.052737, 0.028664, 0.997118],
+  MiddleFinger1_L: [0.025146, 0.032562, -0.022133, 0.998908],
+  MiddleFinger2_L: [-0.006747, -0.00655, 0.001665, 0.999954],
+  MiddleFinger3_L: [0.011986, 0.013599, -0.006697, 0.999813],
+  MiddleFinger1_R: [0.025939, -0.033451, 0.022587, 0.998848],
+  MiddleFinger2_R: [-0.008988, 0.009113, -0.002968, 0.999914],
+  MiddleFinger3_R: [0.013425, -0.015253, 0.007541, 0.999765],
+  RingFinger1_L: [-0.006242, -0.002919, -0.003705, 0.999969],
+  RingFinger2_L: [0.04017, 0.050199, -0.030921, 0.997452],
+  RingFinger3_L: [0.000261, -0.00117, 0.002831, 0.999995],
+  RingFinger1_R: [-0.006242, 0.00292, 0.003706, 0.999969],
+  RingFinger2_R: [0.040171, -0.050201, 0.030921, 0.997452],
+  RingFinger3_R: [0.00026, 0.001171, -0.002831, 0.999995],
+  LittleFinger1_L: [0.016953, 0.020252, -0.011892, 0.99958],
+  LittleFinger2_L: [-0.032304, -0.036684, 0.019054, 0.998623],
+  LittleFinger3_L: [0.028249, 0.029351, -0.012049, 0.999097],
+  LittleFinger1_R: [0.016953, -0.020252, 0.011892, 0.999581],
+  LittleFinger2_R: [-0.030272, 0.034309, -0.017726, 0.998795],
+  LittleFinger3_R: [0.024202, -0.024731, 0.009577, 0.999355]
+}
+
+const INV_ANI_REST_QUATS = {}
+for (const [k, q] of Object.entries(ANI_REST_QUATS)) {
+  INV_ANI_REST_QUATS[k] = new THREE.Quaternion(...q).invert()
+}
+
 /**
  * Speech2MotionManager
  * 
@@ -613,6 +732,11 @@ export class Speech2MotionManager {
 
   _initBoneCache() {
     if (!this.vrm || !this.vrm.scene) return
+    this.boneCache.clear()
+
+    this.isAniModel = Boolean(this.vrm.scene.getObjectByName('Left_arm'))
+    this.needsAniRetarget = !this.isAniModel && Boolean(this.vrm.humanoid)
+
     this.vrm.scene.traverse((obj) => {
       if (obj.isBone || obj.isObject3D) {
         if (obj.name) {
@@ -620,13 +744,25 @@ export class Speech2MotionManager {
         }
       }
     })
+
+    if (this.needsAniRetarget && this.vrm.humanoid) {
+      for (const [s2mName, vrmName] of Object.entries(S2M_TO_VRM_MAP)) {
+        const bone = this.vrm.humanoid.getRawBoneNode?.(vrmName)
+        if (bone) {
+          this.boneCache.set(s2mName, bone)
+        }
+      }
+    }
   }
 
   getBone(name) {
     if (!name || name === 'Root') return null
     if (this.boneCache.has(name)) return this.boneCache.get(name)
     if (!this.vrm || !this.vrm.scene) return null
-    const bone = this.vrm.scene.getObjectByName(name)
+    let bone = this.vrm.scene.getObjectByName(name)
+    if (!bone && this.vrm.humanoid && S2M_TO_VRM_MAP[name]) {
+      bone = this.vrm.humanoid.getRawBoneNode?.(S2M_TO_VRM_MAP[name])
+    }
     if (bone) this.boneCache.set(name, bone)
     return bone
   }
@@ -1591,8 +1727,16 @@ export class Speech2MotionManager {
 
       const quatB = frameB.rotations.get(jointName) || quatA
 
+      let targetQuatA = quatA
+      let targetQuatB = quatB
+      if (this.needsAniRetarget && INV_ANI_REST_QUATS[jointName]) {
+        const invRest = INV_ANI_REST_QUATS[jointName]
+        targetQuatA = this._tempQuatA.copy(invRest).multiply(quatA).normalize()
+        targetQuatB = this._tempQuatB.copy(invRest).multiply(quatB).normalize()
+      }
+
       // Interpolate keyframes of current track
-      this._resultQuat.copy(quatA).slerp(quatB, alpha)
+      this._resultQuat.copy(targetQuatA).slerp(targetQuatB, alpha)
 
       if (inTransition && this.transitionFromPose.has(jointName)) {
         // Blend seamlessly from the previous track's final pose

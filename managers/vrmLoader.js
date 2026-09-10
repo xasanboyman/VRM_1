@@ -201,7 +201,7 @@ export class VRMLoader {
       }
     }
 
-    if (isRiko) {
+    if (isRiko || isLegacyVrm0) {
       this.fixTPose(vrm)
     }
   }
@@ -209,17 +209,13 @@ export class VRMLoader {
   fixTPose(vrm) {
     if (!vrm || !vrm.humanoid) return
     try {
-      const leftUpperArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm')
-      const rightUpperArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm')
+      const leftUpperArm = vrm.humanoid.getRawBoneNode?.('leftUpperArm') || vrm.humanoid.getNormalizedBoneNode?.('leftUpperArm')
+      const rightUpperArm = vrm.humanoid.getRawBoneNode?.('rightUpperArm') || vrm.humanoid.getNormalizedBoneNode?.('rightUpperArm')
       if (leftUpperArm) {
-        leftUpperArm.rotation.z = 1.0
-        leftUpperArm.rotation.x = 0.3
-        leftUpperArm.rotation.y = 0.2
+        leftUpperArm.rotation.set(-0.35, 0.1, 0.65)
       }
       if (rightUpperArm) {
-        rightUpperArm.rotation.z = -1.0
-        rightUpperArm.rotation.x = 0.3
-        rightUpperArm.rotation.y = -0.2
+        rightUpperArm.rotation.set(-0.35, -0.1, -0.65)
       }
     } catch (error) {
       console.error('Error fixing T-pose:', error)
