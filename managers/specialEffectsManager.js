@@ -45,6 +45,7 @@ export class SpecialEffectsManager {
     this.headIcons = []
     this.sakuraPetals = []
     this.isSakuraActive = false
+    this._sakuraTimer = null
 
     // Dynamic procedural textures cache
     this.textureCache = new Map()
@@ -878,48 +879,151 @@ export class SpecialEffectsManager {
   }
 
   /**
+   * Start falling sakura cherry blossom petals (with optional duration)
+   */
+  startSakura(options = {}) {
+    if (this._sakuraTimer) {
+      clearTimeout(this._sakuraTimer)
+      this._sakuraTimer = null
+    }
+
+    if (!this.isSakuraActive) {
+      this.isSakuraActive = true
+      const texture = this.getSakuraTexture()
+      const count = 35
+      for (let i = 0; i < count; i++) {
+        const material = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+          opacity: 0.85,
+          depthWrite: false,
+        })
+        const sprite = new THREE.Sprite(material)
+        const x = (Math.random() - 0.5) * 3.5
+        const y = 1.0 + Math.random() * 2.5
+        const z = -1.0 + Math.random() * 2.5
+        sprite.position.set(x, y, z)
+        const scale = 0.06 + Math.random() * 0.05
+        sprite.scale.set(scale, scale, 1)
+        this.effectsGroup.add(sprite)
+
+        this.sakuraPetals.push({
+          sprite,
+          material,
+          scale,
+          rotation: Math.random() * Math.PI * 2,
+          rotSpeed: (Math.random() - 0.5) * 2.0,
+          fallSpeed: 0.25 + Math.random() * 0.35,
+          driftSpeed: 1.2 + Math.random() * 1.5,
+          driftOffset: Math.random() * Math.PI * 2,
+        })
+      }
+    }
+
+    const duration = options?.duration || (typeof options === 'number' ? options : null)
+    if (duration && duration > 0) {
+      this._sakuraTimer = setTimeout(() => {
+        this.stopSakura()
+      }, duration * 1000)
+    }
+  }
+
+  /**
+   * Stop falling sakura petals immediately
+   */
+  stopSakura() {
+    if (this._sakuraTimer) {
+      clearTimeout(this._sakuraTimer)
+      this._sakuraTimer = null
+    }
+    this.isSakuraActive = false
+    this.sakuraPetals.forEach((p) => {
+      this.effectsGroup.remove(p.sprite)
+      p.material.dispose()
+    })
+    this.sakuraPetals = []
+  }
+
+  /**
    * Toggle continuous falling sakura cherry blossom petals
    */
-  toggleSakura(enable) {
-    this.isSakuraActive = enable !== undefined ? enable : !this.isSakuraActive
-    if (!this.isSakuraActive) {
-      this.sakuraPetals.forEach((p) => {
-        this.effectsGroup.remove(p.sprite)
-        p.material.dispose()
-      })
-      this.sakuraPetals = []
-      return
+  toggleSakura(enable, options = {}) {
+    if (typeof enable === 'boolean') {
+      if (enable) this.startSakura(options)
+      else this.stopSakura()
+    } else {
+      if (this.isSakuraActive) this.stopSakura()
+      else this.startSakura(options)
     }
+    return this.isSakuraActive
+  }
 
-    const texture = this.getSakuraTexture()
-    const count = 35
-    for (let i = 0; i < count; i++) {
-      const material = new THREE.SpriteMaterial({
-        map: texture,
-        transparent: true,
-        opacity: 0.85,
-        depthWrite: false,
-      })
-      const sprite = new THREE.Sprite(material)
-      const x = (Math.random() - 0.5) * 3.5
-      const y = 1.0 + Math.random() * 2.5
-      const z = -1.0 + Math.random() * 2.5
-      sprite.position.set(x, y, z)
-      const scale = 0.06 + Math.random() * 0.05
-      sprite.scale.set(scale, scale, 1)
-      this.effectsGroup.add(sprite)
-
-      this.sakuraPetals.push({
-        sprite,
-        material,
-        scale,
-        rotation: Math.random() * Math.PI * 2,
-        rotSpeed: (Math.random() - 0.5) * 2.0,
-        fallSpeed: 0.25 + Math.random() * 0.35,
-        driftSpeed: 1.2 + Math.random() * 1.5,
-        driftOffset: Math.random() * Math.PI * 2,
-      })
+  /**
+   * Stop an active special effect by name
+   */
+  stop(effectName) {
+    if (!effectName) return
+    const lower = String(effectName).toLowerCase().trim()
+    switch (lower) {
+      case 'sakura':
+      case 'petals':
+      case 'cherry_blossoms':
+        this.stopSakura()
+        break
+      case 'speed_lines':
+      case 'action_lines':
+        this.speedLinesActive = false
+        this.speedLinesTimer = 0
+        if (this.speedLinesCanvas) {
+          this.speedLinesCanvas.style.opacity = '0'
+          this.speedLinesCtx?.clearRect(0, 0, this.speedLinesCanvas.width, this.speedLinesCanvas.height)
+        }
+        break
+      case 'vignette':
+        if (this.vignetteTimer) clearTimeout(this.vignetteTimer)
+        if (this.vignetteEl) this.vignetteEl.style.opacity = '0'
+        break
+      case 'glitch':
+        if (this.glitchTimer) clearTimeout(this.glitchTimer)
+        if (this.glitchEl) this.glitchEl.style.opacity = '0'
+        break
+      case 'gloom':
+        for (let i = this.headIcons.length - 1; i >= 0; i--) {
+          if (this.headIcons[i].type === 'gloom') {
+            this.effectsGroup.remove(this.headIcons[i].sprite)
+            this.headIcons[i].material.dispose()
+            this.headIcons.splice(i, 1)
+          }
+        }
+        break
+      case 'all':
+        this.stopAll()
+        break
     }
+  }
+
+  /**
+   * Stop and clear all active special effects
+   */
+  stopAll() {
+    this.stopSakura()
+    this.stop('speed_lines')
+    this.stop('vignette')
+    this.stop('glitch')
+
+    this.particles.forEach((p) => {
+      this.effectsGroup.remove(p.sprite)
+      p.material.dispose()
+    })
+    this.particles = []
+
+    this.headIcons.forEach((h) => {
+      this.effectsGroup.remove(h.sprite)
+      h.material.dispose()
+    })
+    this.headIcons = []
+
+    this.setMoodLighting('neutral')
   }
 
   /* -------------------------------------------------------------------------- */
@@ -1292,7 +1396,20 @@ export class SpecialEffectsManager {
         this.triggerSpeedLines(options)
         break
       case 'sakura':
-        this.toggleSakura(options.enable)
+      case 'petals':
+      case 'cherry_blossoms':
+        if (options.action === 'stop' || options.enable === false || options.active === false) {
+          this.stopSakura()
+        } else if (options.action === 'toggle') {
+          this.toggleSakura(undefined, options)
+        } else {
+          this.startSakura(options)
+        }
+        break
+      case 'all':
+        if (options.action === 'stop') {
+          this.stopAll()
+        }
         break
       case 'glitch':
         this.triggerGlitch(options.duration)

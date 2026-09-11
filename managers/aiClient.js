@@ -15,6 +15,10 @@ export function stripExpressionCommands(text) {
     .replace(/trigger_special_effect\s*\{[^}]*\}/gi, '')
     .replace(/\[\s*trigger_special_effect[^\]]*\]/gi, '')
     .replace(/\{[^{}]*"name"\s*:\s*"trigger_special_effect"[^{}]*(\{[^{}]*\})*[^{}]*\}/gi, '')
+    .replace(/stop_special_effect\s*\([^)]*\)/gi, '')
+    .replace(/stop_special_effect\s*\{[^}]*\}/gi, '')
+    .replace(/\[\s*stop_special_effect[^\]]*\]/gi, '')
+    .replace(/\{[^{}]*"name"\s*:\s*"stop_special_effect"[^{}]*(\{[^{}]*\})*[^{}]*\}/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -1777,9 +1781,23 @@ export class AIClient {
     if (name === 'trigger_special_effect') {
       const effectName = args?.effect || args?.name
       if (effectName) {
-        window.effectsManager?.trigger(effectName, args)
+        if (args?.action === 'stop' || args?.enable === false) {
+          window.effectsManager?.stop?.(effectName)
+        } else {
+          window.effectsManager?.trigger(effectName, args)
+        }
       }
-      return { id, name, response: { result: 'ok', effect: effectName } }
+      return { id, name, response: { result: 'ok', effect: effectName, action: args?.action || 'start' } }
+    }
+
+    if (name === 'stop_special_effect') {
+      const effectName = args?.effect || args?.name || 'all'
+      if (effectName === 'all') {
+        window.effectsManager?.stopAll?.()
+      } else {
+        window.effectsManager?.stop?.(effectName)
+      }
+      return { id, name, response: { result: 'ok', stopped: effectName } }
     }
 
     // Default fallback
@@ -2248,14 +2266,40 @@ export class AIClient {
           {
             name: 'trigger_special_effect',
             description:
-              'Trigger anime visual special effects (e.g. hearts, sparkles, tears, sweat, steam, exclamation, question, zzz, music_notes, gloom, sakura, speed_lines, vignette, glitch).',
+              'Trigger or control anime visual special effects (e.g. hearts, sparkles, tears, sweat, steam, exclamation, question, zzz, music_notes, gloom, sakura, speed_lines, vignette, glitch). For atmospheric effects like sakura petals, you can start, stop, or specify a duration in seconds.',
             parameters: {
               type: 'OBJECT',
               properties: {
                 effect: {
                   type: 'STRING',
                   description:
-                    'Visual effect name. Allowed values: hearts, sparkles, tears, sweat, steam, exclamation, question, zzz, music_notes, gloom, sakura, speed_lines, vignette, glitch.',
+                    'Visual effect name. Allowed values: hearts, sparkles, tears, sweat, steam, exclamation, question, zzz, music_notes, gloom, sakura, speed_lines, vignette, glitch, all.',
+                },
+                action: {
+                  type: 'STRING',
+                  description:
+                    'Action to perform: "start" (default) to begin/trigger, "stop" to stop/clear the effect (especially for continuous effects like sakura), or "toggle".',
+                },
+                duration: {
+                  type: 'NUMBER',
+                  description:
+                    'Optional duration in seconds before the effect automatically stops (e.g. 15.0 for 15 seconds of falling sakura petals).',
+                },
+              },
+              required: ['effect'],
+            },
+          },
+          {
+            name: 'stop_special_effect',
+            description:
+              'Stop or clear an active special effect (e.g. stop falling sakura cherry blossom petals, stop speed lines, or stop all active effects).',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                effect: {
+                  type: 'STRING',
+                  description:
+                    'Name of the effect to stop: "sakura", "speed_lines", "vignette", "glitch", "gloom", or "all" to clear everything.',
                 },
               },
               required: ['effect'],

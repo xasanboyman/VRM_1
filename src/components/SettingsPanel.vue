@@ -429,20 +429,31 @@
           <p class="text-[10px] font-mono uppercase tracking-[0.15em] text-cyan-500/50 ml-1">
             Anime Special Effects
           </p>
-          <span class="text-[10px] text-cyan-400/70 font-mono">Live FX</span>
+          <button
+            class="rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-[9px] font-mono uppercase tracking-wider text-rose-300 hover:bg-rose-500/20 active:scale-95 transition"
+            title="Stop all active special effects"
+            @click="stopAllEffects"
+          >
+            Stop All
+          </button>
         </div>
 
         <div class="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
           <button
             v-for="fx in specialEffectsList"
             :key="fx.id"
-            class="group flex flex-col items-center justify-center gap-1 rounded-xl border border-white/5 bg-white/5 p-2 transition-all hover:bg-cyan-500/15 hover:border-cyan-500/30 active:scale-95"
+            class="group flex flex-col items-center justify-center gap-1 rounded-xl border p-2 transition-all active:scale-95"
+            :class="
+              fx.id === 'sakura' && isSakuraActive
+                ? 'border-rose-400/50 bg-rose-500/25 shadow-[0_0_12px_rgba(244,63,94,0.35)] text-rose-200'
+                : 'border-white/5 bg-white/5 hover:bg-cyan-500/15 hover:border-cyan-500/30'
+            "
             :title="`Trigger ${fx.label}`"
             @click="triggerEffect(fx.id)"
           >
             <span class="text-base transition-transform group-hover:scale-125">{{ fx.icon }}</span>
             <span class="text-[9px] font-medium text-white/70 group-hover:text-cyan-200 transition-colors truncate max-w-full">
-              {{ fx.label }}
+              {{ fx.id === 'sakura' && isSakuraActive ? 'Sakura (On)' : fx.label }}
             </span>
           </button>
         </div>
@@ -452,6 +463,7 @@
 </template>
 
 <script setup>
+import { ref, onMounted } from 'vue'
 import {
   ComputerDesktopIcon,
   CubeIcon,
@@ -634,13 +646,29 @@ const specialEffectsList = [
   { id: 'glitch', label: 'Glitch', icon: '📺' },
 ]
 
+const isSakuraActive = ref(false)
+
+const updateSakuraState = () => {
+  isSakuraActive.value = Boolean(window.effectsManager?.isSakuraActive)
+}
+
 const triggerEffect = (id) => {
   if (id === 'sakura') {
     window.effectsManager?.toggleSakura()
+    updateSakuraState()
   } else {
     window.effectsManager?.trigger(id)
   }
 }
+
+const stopAllEffects = () => {
+  window.effectsManager?.stopAll()
+  updateSakuraState()
+}
+
+onMounted(() => {
+  updateSakuraState()
+})
 </script>
 
 <style scoped>

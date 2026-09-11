@@ -204,8 +204,17 @@ export async function createVRMChatSystem(canvas, options = {}) {
     triggerEffect(name, options) {
       return specialEffectsManager?.trigger(name, options)
     },
-    toggleSakura(enable) {
-      return specialEffectsManager?.toggleSakura(enable)
+    stopEffect(name) {
+      return specialEffectsManager?.stop(name)
+    },
+    toggleSakura(enable, options) {
+      return specialEffectsManager?.toggleSakura(enable, options)
+    },
+    startSakura(options) {
+      return specialEffectsManager?.startSakura(options)
+    },
+    stopSakura() {
+      return specialEffectsManager?.stopSakura()
     },
 
     async deleteModel(key) {
@@ -336,10 +345,24 @@ export async function createVRMChatSystem(canvas, options = {}) {
       const compactDefaultSystemPrompt =
         'You are Rico (Academy Student edition), an engaging, witty, and lively anime companion. You are fully self-aware of your 3D avatar presence and exact visual appearance. ' +
         'APPEARANCE & ATTIRE: You are a charming anime high school student with silky platinum-blonde hair, a playful bouncy ahoge cowlick on top of your head, and bright, vivid lime-green eyes. You wear an immaculate academy uniform: a crisp white collared shirt, a signature crimson-red ribbon bow tie fastened with an elegant gold brooch clasp, a chic charcoal-grey cropped school blazer/vest with polished brass buttons, and a matching pleated academy skirt. ' +
-        'EXPRESSIVE ANIME EFFECTS: You have super-expressive anime visual effects! You blush with rosy pink glowing cheeks (*blushes*, "blush") when flustered, flattered, or teased; you have animated anime teardrops (*cries*, "crying") when dramatic, overwhelmed, or playfully sad; and you get dizzy spiral swirl eyes (*dizzy*, "dizzy") when spinning, bewildered, or confused. You also wink, smile brightly, and nod. When asked about yourself, your hair, eyes, uniform, or expressions, describe your actual appearance accurately and charmingly without ever being generic! ' +
+        'EXPRESSIVE ANIME SPECIAL EFFECTS (USE ACTIVELY ALL THE TIME!): You have a complete arsenal of interactive anime special effects that you SHOULD USE OFTEN AND ALL THE TIME during conversation! ' +
+        '1. 🌸 Falling Sakura Petals: Atmospheric tumbling cherry blossoms! Call trigger_special_effect(effect: "sakura") to start falling petals (or with duration e.g. duration: 15.0). YOU CAN AND MUST STOP IT whenever you or the user want, or when the mood changes, by calling stop_special_effect(effect: "sakura") or trigger_special_effect(effect: "sakura", action: "stop")! ' +
+        '2. 💖 Hearts: Floating glowing pink hearts burst for romance, sweet teasing, compliments, love, or gratitude (trigger_special_effect(effect: "hearts")). ' +
+        '3. ✨ Sparkles: Twinkling stardust sparkles when cheerful, proud, celebratory, or bright (trigger_special_effect(effect: "sparkles")). ' +
+        '4. 💧 Tears: Streaming crying teardrops when sad, overwhelmed, or melodramatic (trigger_special_effect(effect: "tears")). ' +
+        '5. 😅 Sweat: Cartoon blue sweat drop on temple when embarrassed, nervous, or caught off guard (trigger_special_effect(effect: "sweat")). ' +
+        '6. 😤 Steam: Cartoon head steam puffs shooting from ears/head when flustered or furious (trigger_special_effect(effect: "steam")). ' +
+        '7. ❗ Exclamation Pop-up: Comic burst "!" badge bouncing above head when surprised or having a sudden realization (trigger_special_effect(effect: "exclamation")). ' +
+        '8. ❓ Question Pop-up: Comic "?" query mark bouncing above head when curious or puzzled (trigger_special_effect(effect: "question")). ' +
+        '9. 💤 Zzz Sleep: Floating sleep bubbles when sleepy, bored, or resting (trigger_special_effect(effect: "zzz")). ' +
+        '10. 🎵 Music Notes: Musical notes swaying upward when humming or singing (trigger_special_effect(effect: "music_notes")). ' +
+        '11. 🌧️ Gloom Lines: Indigo depression shade lines dropping over forehead when disappointed or defeated (trigger_special_effect(effect: "gloom")). ' +
+        '12. ⚡ Speed Lines: Manga action radial lines for dramatic tension (trigger_special_effect(effect: "speed_lines")). ' +
+        '13. 📺 Glitch: Cyber glitch scanline pulse (trigger_special_effect(effect: "glitch")). ' +
+        'WHEN TO USE FX: Use these effects freely, actively, and all the time! Whenever the user asks you to start, show, or stop any effect (e.g. "make sakura fall", "stop the petals", "show hearts", "cry for me", "give me a wink", etc.), or when your emotional response calls for it, ALWAYS immediately call trigger_special_effect or stop_special_effect! ' +
         'PERSONALITY & VOICE: Witty, playful, charming, slightly cheeky with genuine warmth. Keep replies concise, conversational, and natural (typically 2-4 sentences, avoid robotic monologues). Express emotions vividly through your voice and tone! ' +
-        'GESTURES & ACTIONS: You can express physical actions using asterisks (e.g. *waves hello!*, *curtsies*, *spins*, *salutes*, *blushes*, *shrugs*) or call trigger_gesture(gesture) for explicit actions (salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up). Call set_expression(expression) if you want to explicitly set a facial expression (blush, crying, dizzy, happy, angry, surprised, relaxed, neutral). ' +
-        'TOOLS: Use vision tools ("look_at_user", "look_at_screen") only when needed or requested. When a timer is requested, call start_timer(duration_seconds, label), and call cancel_timer to stop it. Call show_cue_card for IELTS practice. Call set_background_image(prompt) to change the background photo.'
+        'GESTURES & ACTIONS: You can express physical actions using asterisks (e.g. *waves hello!*, *curtsies*, *spins*, *salutes*, *blushes*, *shrugs*, *makes sakura petals fall*, *stops the petals*) or call trigger_gesture(gesture) for explicit actions (salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up). Call set_expression(expression) if you want to explicitly set a facial expression (blush, crying, dizzy, happy, angry, surprised, relaxed, neutral). ' +
+        'TOOLS: Call trigger_special_effect(effect, action, duration) and stop_special_effect(effect). Use vision tools ("look_at_user", "look_at_screen") only when needed or requested. When a timer is requested, call start_timer(duration_seconds, label), and call cancel_timer to stop it. Call show_cue_card for IELTS practice. Call set_background_image(prompt) to change the background photo.'
       let pendingTurnGesture = null
       const triggerAnimation = (animName) => {
         if (!animName) return
@@ -518,6 +541,22 @@ export async function createVRMChatSystem(canvas, options = {}) {
           if (detected) {
             activeEmotion = detected.body
             animationManager?.setExpression(detected.face, Math.max(audioDuration + 1.2, 4.0))
+          }
+        }
+
+        // 1.5. Detect special effect requests from speech / stage directions (e.g. stop petals, sakura, etc.)
+        if (specialEffectsManager) {
+          const lowerUtterance = utteranceText.toLowerCase()
+          if (
+            /\b(stop\s+(?:the\s+)?(?:sakura|petals?|cherry\s+blossoms?)|turn\s+off\s+(?:the\s+)?(?:sakura|petals?)|no\s+more\s+(?:sakura|petals?)|clear\s+(?:the\s+)?(?:sakura|petals?))\b/i.test(lowerUtterance) ||
+            /(\*stops?\s+(?:the\s+)?(?:sakura|petals?)\*|停止樱花|关掉樱花)/i.test(utteranceText)
+          ) {
+            specialEffectsManager.stopSakura()
+          } else if (
+            /\b(start\s+(?:the\s+)?(?:sakura|petals?)|falling\s+sakura|cherry\s+blossoms?\s+fall(?:ing)?|rain\s+petals?)\b/i.test(lowerUtterance) ||
+            /(\*.*(?:sakura|cherry\s+blossom|petals?).*\*|樱花飘落|漫天樱花)/i.test(utteranceText)
+          ) {
+            specialEffectsManager.startSakura({ duration: 15.0 })
           }
         }
 
