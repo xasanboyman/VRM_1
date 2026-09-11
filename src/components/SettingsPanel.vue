@@ -422,6 +422,31 @@
           </div>
         </div>
       </div>
+
+      <!-- Anime Special Effects Studio Section -->
+      <div class="space-y-3 pt-4 border-t border-white/5">
+        <div class="flex items-center justify-between">
+          <p class="text-[10px] font-mono uppercase tracking-[0.15em] text-cyan-500/50 ml-1">
+            Anime Special Effects
+          </p>
+          <span class="text-[10px] text-cyan-400/70 font-mono">Live FX</span>
+        </div>
+
+        <div class="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+          <button
+            v-for="fx in specialEffectsList"
+            :key="fx.id"
+            class="group flex flex-col items-center justify-center gap-1 rounded-xl border border-white/5 bg-white/5 p-2 transition-all hover:bg-cyan-500/15 hover:border-cyan-500/30 active:scale-95"
+            :title="`Trigger ${fx.label}`"
+            @click="triggerEffect(fx.id)"
+          >
+            <span class="text-base transition-transform group-hover:scale-125">{{ fx.icon }}</span>
+            <span class="text-[9px] font-medium text-white/70 group-hover:text-cyan-200 transition-colors truncate max-w-full">
+              {{ fx.label }}
+            </span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -591,6 +616,30 @@ const formatTimeAgo = (timestamp) => {
     }
   }
   return translate('settings.justNow')
+}
+
+const specialEffectsList = [
+  { id: 'hearts', label: 'Hearts', icon: '💖' },
+  { id: 'sparkles', label: 'Sparkles', icon: '✨' },
+  { id: 'tears', label: 'Tears', icon: '💧' },
+  { id: 'sweat', label: 'Sweat', icon: '😅' },
+  { id: 'steam', label: 'Steam', icon: '😤' },
+  { id: 'exclamation', label: 'Pop !', icon: '❗' },
+  { id: 'question', label: 'Query ?', icon: '❓' },
+  { id: 'zzz', label: 'Sleep Zzz', icon: '💤' },
+  { id: 'music', label: 'Music ♫', icon: '🎵' },
+  { id: 'gloom', label: 'Gloom', icon: '🌧️' },
+  { id: 'speed_lines', label: 'Speed Lines', icon: '⚡' },
+  { id: 'sakura', label: 'Sakura 🌸', icon: '🌸' },
+  { id: 'glitch', label: 'Glitch', icon: '📺' },
+]
+
+const triggerEffect = (id) => {
+  if (id === 'sakura') {
+    window.effectsManager?.toggleSakura()
+  } else {
+    window.effectsManager?.trigger(id)
+  }
 }
 </script>
 

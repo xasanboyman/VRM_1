@@ -2,6 +2,7 @@ import { AudioManager } from './audioManager.js'
 import { SpeechManager } from './speechManager.js'
 import { AIClient, stripExpressionCommands } from './aiClient.js'
 import { AnimationManager } from './animationManager.js'
+import { SpecialEffectsManager } from './specialEffectsManager.js'
 import { VRMLoader } from './vrmLoader.js'
 import { SceneManager } from './sceneManager.js'
 import { ConfigManager } from './configManager.js'
@@ -71,6 +72,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
   let vrm = null
   let animationManager = null
+  let specialEffectsManager = null
   const pendingAnimations = []
   const pendingExpressions = []
   const lookAtOptions = {
@@ -124,6 +126,14 @@ export async function createVRMChatSystem(canvas, options = {}) {
         },
       })
 
+      specialEffectsManager = new SpecialEffectsManager({
+        sceneManager,
+        animationManager,
+        vrm,
+      })
+      window.specialEffectsManager = specialEffectsManager
+      window.effectsManager = specialEffectsManager
+
       audioManager.onSpeechStart = () => {
         if (audioManager.isUserSpeaking) return
         animationManager?.setSpeakingState(true)
@@ -155,6 +165,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
   sceneManager.addUpdateCallback((delta) => {
     animationManager?.update(delta)
+    specialEffectsManager?.update(delta)
     vrm?.update(delta)
 
     if (vrm?.scene) {
@@ -183,10 +194,19 @@ export async function createVRMChatSystem(canvas, options = {}) {
     speechManager,
     aiClient,
     animationManager,
+    specialEffectsManager,
+    effectsManager: specialEffectsManager,
     visionManager,
     telegramManager,
     vrm,
     cacheManager,
+
+    triggerEffect(name, options) {
+      return specialEffectsManager?.trigger(name, options)
+    },
+    toggleSakura(enable) {
+      return specialEffectsManager?.toggleSakura(enable)
+    },
 
     async deleteModel(key) {
       if (vrm && vrm.meta && vrm.meta.key === key) {
@@ -873,6 +893,18 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
         animationManager = new AnimationManager(vrm, sceneManager.camera)
         window.animationManager = animationManager
+        if (specialEffectsManager) {
+          specialEffectsManager.setVRM(vrm)
+          specialEffectsManager.attachAnimationManager(animationManager)
+        } else {
+          specialEffectsManager = new SpecialEffectsManager({
+            sceneManager,
+            animationManager,
+            vrm,
+          })
+          window.specialEffectsManager = specialEffectsManager
+          window.effectsManager = specialEffectsManager
+        }
         await animationManager.initialize()
 
         // Wire up Lip Sync State for new VRM
@@ -905,6 +937,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
     cleanup() {
       aiClient?.disconnect('System cleanup')
+      specialEffectsManager?.cleanup()
       animationManager?.cleanup()
       audioManager?.cleanup()
       sceneManager?.cleanup()

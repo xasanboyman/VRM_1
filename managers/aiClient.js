@@ -11,6 +11,10 @@ export function stripExpressionCommands(text) {
     .replace(/expression:\s*[a-zA-Z0-9_]+/gi, '')
     .replace(/\{[^{}]*"name"\s*:\s*"set_expression"[^{}]*(\{[^{}]*\})*[^{}]*\}/gi, '')
     .replace(/\{"name"\s*:\s*"set_expression"[^}]*\}/gi, '')
+    .replace(/trigger_special_effect\s*\([^)]*\)/gi, '')
+    .replace(/trigger_special_effect\s*\{[^}]*\}/gi, '')
+    .replace(/\[\s*trigger_special_effect[^\]]*\]/gi, '')
+    .replace(/\{[^{}]*"name"\s*:\s*"trigger_special_effect"[^{}]*(\{[^{}]*\})*[^{}]*\}/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -1770,6 +1774,14 @@ export class AIClient {
       return { id, name, response: { result: 'ok', expression: expressionName } }
     }
 
+    if (name === 'trigger_special_effect') {
+      const effectName = args?.effect || args?.name
+      if (effectName) {
+        window.effectsManager?.trigger(effectName, args)
+      }
+      return { id, name, response: { result: 'ok', effect: effectName } }
+    }
+
     // Default fallback
     return { id, name, response: { result: 'ok' } }
   }
@@ -2231,6 +2243,22 @@ export class AIClient {
                 },
               },
               required: ['expression'],
+            },
+          },
+          {
+            name: 'trigger_special_effect',
+            description:
+              'Trigger anime visual special effects (e.g. hearts, sparkles, tears, sweat, steam, exclamation, question, zzz, music_notes, gloom, sakura, speed_lines, vignette, glitch).',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                effect: {
+                  type: 'STRING',
+                  description:
+                    'Visual effect name. Allowed values: hearts, sparkles, tears, sweat, steam, exclamation, question, zzz, music_notes, gloom, sakura, speed_lines, vignette, glitch.',
+                },
+              },
+              required: ['effect'],
             },
           },
           {

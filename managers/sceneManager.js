@@ -160,11 +160,13 @@ export class SceneManager {
     const fillLight = new THREE.DirectionalLight(0xa9c4ff, 0.7)
     fillLight.position.set(-3.0, 1.6, 2.0)
     this.scene.add(fillLight)
+    this.fillLight = fillLight
 
     // RIM / back light — indigo accent behind for that glowing edge separation.
     const rimLight = new THREE.DirectionalLight(0x8b9bff, 2.4)
     rimLight.position.set(-1.6, 3.4, -3.2)
     this.scene.add(rimLight)
+    this.rimLight = rimLight
 
     if (this.options.shadows) {
       this.setupContactShadow()
