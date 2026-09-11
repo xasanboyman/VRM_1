@@ -62,64 +62,6 @@ const MIXAMO_VRM_RIG_MAP = {
   mixamorigRightToeBase: 'rightToes',
 }
 
-export const LOCAL_ANIMATION_FILES = [
-  { name: 'NeutralIdle', file: 'NeutralIdle.vrma', isLoop: true, isIdle: true },
-  { name: 'HappyIdle', file: 'HappyIdle.vrma', isLoop: true, isIdle: true },
-  { name: 'Acknowledging', file: 'Acknowledging.vrma', isLoop: false },
-  { name: 'Admiration', file: 'Admiration.vrma', isLoop: false },
-  { name: 'Amusement', file: 'Amusement.vrma', isLoop: false },
-  { name: 'Angry', file: 'Angry.vrma', isLoop: false },
-  { name: 'Approval', file: 'Approval.vrma', isLoop: false },
-  { name: 'Backflip', file: 'Backflip.vrma', isLoop: false },
-  { name: 'BlowKiss', file: 'BlowKiss.vrma', isLoop: false },
-  { name: 'Bored', file: 'Bored.vrma', isLoop: false },
-  { name: 'Bow', file: 'Bow.vrma', isLoop: false },
-  { name: 'Cheering', file: 'Cheering.vrma', isLoop: false },
-  { name: 'Clapping', file: 'Clapping.vrma', isLoop: false },
-  { name: 'Confusion', file: 'Confusion.vrma', isLoop: false },
-  { name: 'Curiosity', file: 'Curiosity.vrma', isLoop: false },
-  { name: 'CutthroatGesture', file: 'CutthroatGesture.vrma', isLoop: false },
-  { name: 'Dab', file: 'Dab.vrma', isLoop: false },
-  { name: 'Disappointment', file: 'Disappointment.vrma', isLoop: false },
-  { name: 'Disgust', file: 'Disgust.vrma', isLoop: false },
-  { name: 'Embarrassment', file: 'Embarrassment.vrma', isLoop: false },
-  { name: 'Excitement', file: 'Excitement.vrma', isLoop: false },
-  { name: 'Explaining', file: 'Explaining.vrma', isLoop: false },
-  { name: 'Facepalm', file: 'Facepalm.vrma', isLoop: false },
-  { name: 'Fear', file: 'Fear.vrma', isLoop: false },
-  { name: 'GangnamStyle', file: 'GangnamStyle.vrma', isLoop: false },
-  { name: 'Gratitude', file: 'Gratitude.vrma', isLoop: false },
-  { name: 'Greeting', file: 'Greeting.vrma', isLoop: false },
-  { name: 'Grief', file: 'Grief.vrma', isLoop: false },
-  { name: 'HandsOnHips', file: 'HandsOnHips.vrma', isLoop: false },
-  { name: 'HeartFingers', file: 'HeartFingers.vrma', isLoop: false },
-  { name: 'HipHopDance', file: 'HipHopDance.vrma', isLoop: false },
-  { name: 'Joy', file: 'Joy.vrma', isLoop: false },
-  { name: 'Laughing', file: 'Laughing.vrma', isLoop: false },
-  { name: 'LookingAround', file: 'LookingAround.vrma', isLoop: false },
-  { name: 'LookingAtFingerFromBoredom', file: 'LookingAtFingerFromBoredom.vrma', isLoop: false },
-  { name: 'Love', file: 'Love.vrma', isLoop: false },
-  { name: 'MacarenaDance', file: 'MacarenaDance.vrma', isLoop: false },
-  { name: 'Nervous', file: 'Nervous.vrma', isLoop: false },
-  { name: 'Nod', file: 'Nod.vrma', isLoop: false },
-  { name: 'Pat', file: 'Pat.vrma', isLoop: false },
-  { name: 'Pointing', file: 'Pointing.vrma', isLoop: false },
-  { name: 'Pride', file: 'Pride.vrma', isLoop: false },
-  { name: 'Realization', file: 'Realization.vrma', isLoop: false },
-  { name: 'Relief', file: 'Relief.vrma', isLoop: false },
-  { name: 'Sadness', file: 'Sadness.vrma', isLoop: false },
-  { name: 'Salute', file: 'Salute.vrma', isLoop: false },
-  { name: 'ShakeHead', file: 'ShakeHead.vrma', isLoop: false },
-  { name: 'Shrugging', file: 'Shrugging.vrma', isLoop: false },
-  { name: 'Shy', file: 'Shy.vrma', isLoop: false },
-  { name: 'Sleeping', file: 'Sleeping.vrma', isLoop: false },
-  { name: 'Surprise', file: 'Surprise.vrma', isLoop: false },
-  { name: 'Taunt', file: 'Taunt Gesture.vrma', isLoop: false },
-  { name: 'Thinking', file: 'Thinking.vrma', isLoop: false },
-  { name: 'ThumbsUp', file: 'ThumbsUp.vrma', isLoop: false },
-  { name: 'Waving', file: 'Waving.vrma', isLoop: false },
-]
-
 // Safety net: maps common names the model invents to real catalog animations,
 // so a near-miss still plays something fitting instead of doing nothing.
 const ANIMATION_ALIASES = {
@@ -924,19 +866,26 @@ export class AnimationManager {
   }
 
   getAvailableAnimations() {
-    return LOCAL_ANIMATION_FILES.map((a) => a.name)
+    return []
   }
 
   getAnimationCatalog() {
-    return LOCAL_ANIMATION_FILES
+    return []
   }
 
-  // Every animation the AI is allowed to trigger: mocap gesture keywords from Speech2Motion or .vrma
+  // Every animation the AI is allowed to trigger: mocap gesture keywords from Speech2Motion
   getTriggerableAnimationNames() {
     if (this.speech2motion && this.speech2motion.enabled) {
       return Object.keys(this.speech2motion.gestureKeywordMap)
     }
-    return LOCAL_ANIMATION_FILES.map((a) => a.name)
+    return [
+      'spin', 'spin_360', 'rotate', 'twirl',
+      'shrug', 'as_you_insist', 'wave', 'greeting', 'hello',
+      'clap', 'applause', 'heart_fingers', 'love',
+      'hands_on_hips', 'sassy', 'nod', 'approval',
+      'shake_head', 'bow', 'thinking', 'thumbs_up',
+      'shy', 'jump', 'cry', 'quiet', 'cheering', 'joy'
+    ]
   }
 
   getAnimationRepoBase() {
@@ -944,84 +893,45 @@ export class AnimationManager {
   }
 
   async loadAnimationFile(item) {
-    if (!item) return null
-    const filename = item.file || (item.name.endsWith('.vrma') ? item.name : `${item.name}.vrma`)
-    const url = `/animations/${filename}`
-    try {
-      return await this.loadClip(item.name, url, item.isLoop)
-    } catch (err) {
-      console.warn(`Could not load animation ${item.name} from ${url}:`, err)
-      return null
-    }
+    return null
   }
 
   async loadAnimationBatch(files, options = {}) {
-    if (!Array.isArray(files)) return
-    const promises = files.map((f) => this.loadAnimationFile(f))
-    await Promise.allSettled(promises)
+    return Promise.resolve()
   }
 
   startBackgroundAnimationLoad(options = {}) {
-    if (this.backgroundLoadPromise) return this.backgroundLoadPromise
-    this.backgroundLoadPromise = (async () => {
-      for (const item of LOCAL_ANIMATION_FILES) {
-        if (!this.actions[item.name]) {
-          await this.loadAnimationFile(item).catch(() => {})
-        }
-      }
-    })()
-    return this.backgroundLoadPromise
+    return Promise.resolve()
   }
 
   async initialize(options = {}) {
     const { onProgress } = options
-    const isLegacyVrm0 = this.vrm?.meta?.metaVersion === '0' || this.vrm?.meta?.specVersion === '0.0'
-    const isAni = this.vrm?.meta?.name === 'Ani' || Boolean(this.vrm?.scene?.getObjectByName('Left_arm'))
+    console.log('AnimationManager: Initializing with Speech2Motion (100% mocap synthesized motion online)...')
 
-    if (isLegacyVrm0 || !isAni) {
-      console.log('AnimationManager: Initializing native VRM 0.0 animation system with .vrma clips...')
-      if (this.speech2motion) {
-        this.speech2motion.enabled = false
-      }
-
-      // Restore normalized humanoid bone updates so mixer and procedural animations work
-      if (this.vrm?.humanoid) {
-        const proto = Object.getPrototypeOf(this.vrm.humanoid)
-        if (typeof proto.update === 'function') {
-          this.vrm.humanoid.update = proto.update
-        }
-        this.vrm.humanoid.autoUpdateHumanBones = true
-      }
-
-      this.mainIdle = 'NeutralIdle'
-
-      try {
-        const idleAction = await this.loadAnimationFile({ name: 'NeutralIdle', file: 'NeutralIdle.vrma', isLoop: true, isIdle: true })
-        if (idleAction) {
-          this.play('NeutralIdle')
-        }
-      } catch (err) {
-        console.warn('NeutralIdle load error:', err)
-      }
-
-      onProgress?.({ current: 1, total: 1, name: 'NeutralIdle' })
-      this.startBackgroundAnimationLoad()
-      console.log('AnimationManager Ready: Native VRM 0.0 animation engine active')
-      return
-    }
-
-    console.log('AnimationManager: Initializing with Speech2Motion (Ani VRM 1.0)...')
     if (!this.speech2motion) {
       this.speech2motion = new Speech2MotionManager(this.vrm, {
         avatarName: 'Ani-default',
+        apiUrl: 'https://xn--dr8haa.uz/oracle/',
         animationManager: this,
         audioManager: typeof window !== 'undefined' ? window.vrmAudioManager : null,
         enabled: true,
       })
     } else {
+      this.speech2motion.setVRM(this.vrm)
       this.speech2motion.enabled = true
       if (typeof window !== 'undefined' && window.vrmAudioManager) {
         this.speech2motion.audioManager = window.vrmAudioManager
+      }
+    }
+
+    const isLegacyVrm0 = this.vrm?.meta?.metaVersion === '0' || this.vrm?.meta?.specVersion === '0.0'
+    const isAni = this.vrm?.meta?.name === 'Ani' || Boolean(this.vrm?.scene?.getObjectByName('Left_arm'))
+
+    if (this.vrm?.humanoid) {
+      if (isLegacyVrm0 || !isAni) {
+        this.vrm.humanoid.autoUpdateHumanBones = true
+      } else {
+        this.vrm.humanoid.update = () => {}
       }
     }
 

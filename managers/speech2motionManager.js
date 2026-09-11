@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { stripExpressionCommands } from './aiClient.js'
+import { ANI_RIG_P, ANI_RIG_B } from './aniRigConstants.js'
 
 /**
  * Extract word timestamps and detected motion keywords from speech text.
@@ -164,66 +165,18 @@ export const S2M_TO_VRM_MAP = {
   LittleFinger3_R: 'rightLittleDistal'
 }
 
-// Canonical Ani rig rest quaternions for delta retargeting onto standard VRM models
-const ANI_REST_QUATS = {
-  Hips: [0, 0, 0, 1],
-  Spine: [0.056206, 0.000001, 0.000001, 0.998419],
-  Chest: [-0.180445, -0.000001, -0.000002, 0.983585],
-  Neck: [0.180308, 0.000002, 0.000002, 0.98361],
-  Head: [-0.056068, -0.000002, -0.000002, 0.998427],
-  Left_shoulder: [-0.589043, -0.416526, -0.536471, 0.437873],
-  Left_arm: [0.126936, -0.15888, -0.060243, 0.977249],
-  Left_elbow: [0, 0, 0, 1],
-  Left_wrist: [0, 0, 0, 1],
-  Right_shoulder: [-0.589043, 0.416526, 0.536472, 0.437872],
-  Right_arm: [0.126936, 0.15888, 0.060243, 0.977249],
-  Right_elbow: [0, 0, 0, 1],
-  Right_wrist: [0, 0, 0, 1],
-  Left_leg: [-0.999478, 0.022779, 0.022779, 0.002375],
-  Left_knee: [0.047646, 0.010985, -0.013214, 0.998716],
-  Left_ankle: [-0.399883, 0.013733, -0.006199, 0.916442],
-  Left_toe: [0, -0.911439, 0.411436, 0.000001],
-  Right_leg: [-0.999478, -0.022779, -0.022779, 0.002375],
-  Right_knee: [0.047646, -0.010985, 0.013214, 0.998716],
-  Right_ankle: [-0.399884, -0.013733, 0.006199, 0.916442],
-  Right_toe: [0, 0.911439, -0.411436, 0],
-  Eye_L: [0, 0, 0, 1],
-  Eye_R: [0, 0, 0, 1],
-  Thumb0_L: [-0.302765, -0.164176, -0.139491, 0.928398],
-  Thumb1_L: [0.050285, 0.040521, 0.014196, 0.997812],
-  Thumb2_L: [-0.004866, 0.009476, -0.011997, 0.999871],
-  Thumb0_R: [-0.302765, 0.164176, 0.139491, 0.928398],
-  Thumb1_R: [0.050285, -0.04052, -0.014195, 0.997812],
-  Thumb2_R: [-0.004867, -0.009476, 0.011994, 0.999871],
-  IndexFinger1_L: [0.033808, 0.036291, -0.016419, 0.998634],
-  IndexFinger2_L: [-0.031444, -0.036443, 0.020698, 0.998626],
-  IndexFinger3_L: [0.046409, 0.052738, -0.028665, 0.997117],
-  IndexFinger1_R: [0.033808, -0.036291, 0.016419, 0.998634],
-  IndexFinger2_R: [-0.031444, 0.036441, -0.020698, 0.998626],
-  IndexFinger3_R: [0.046408, -0.052737, 0.028664, 0.997118],
-  MiddleFinger1_L: [0.025146, 0.032562, -0.022133, 0.998908],
-  MiddleFinger2_L: [-0.006747, -0.00655, 0.001665, 0.999954],
-  MiddleFinger3_L: [0.011986, 0.013599, -0.006697, 0.999813],
-  MiddleFinger1_R: [0.025939, -0.033451, 0.022587, 0.998848],
-  MiddleFinger2_R: [-0.008988, 0.009113, -0.002968, 0.999914],
-  MiddleFinger3_R: [0.013425, -0.015253, 0.007541, 0.999765],
-  RingFinger1_L: [-0.006242, -0.002919, -0.003705, 0.999969],
-  RingFinger2_L: [0.04017, 0.050199, -0.030921, 0.997452],
-  RingFinger3_L: [0.000261, -0.00117, 0.002831, 0.999995],
-  RingFinger1_R: [-0.006242, 0.00292, 0.003706, 0.999969],
-  RingFinger2_R: [0.040171, -0.050201, 0.030921, 0.997452],
-  RingFinger3_R: [0.00026, 0.001171, -0.002831, 0.999995],
-  LittleFinger1_L: [0.016953, 0.020252, -0.011892, 0.99958],
-  LittleFinger2_L: [-0.032304, -0.036684, 0.019054, 0.998623],
-  LittleFinger3_L: [0.028249, 0.029351, -0.012049, 0.999097],
-  LittleFinger1_R: [0.016953, -0.020252, 0.011892, 0.999581],
-  LittleFinger2_R: [-0.030272, 0.034309, -0.017726, 0.998795],
-  LittleFinger3_R: [0.024202, -0.024731, 0.009577, 0.999355]
-}
+// Precomputed quaternion instances for real-time retargeting onto standard VRM normalized bones
+const ANI_P_QUATS = {}
+const ANI_INV_B_QUATS = {}
+const ANI_INV_P_QUATS = {}
 
-const INV_ANI_REST_QUATS = {}
-for (const [k, q] of Object.entries(ANI_REST_QUATS)) {
-  INV_ANI_REST_QUATS[k] = new THREE.Quaternion(...q).invert()
+for (const [bone, arr] of Object.entries(ANI_RIG_P)) {
+  const q = new THREE.Quaternion(...arr)
+  ANI_P_QUATS[bone] = q
+  ANI_INV_P_QUATS[bone] = q.clone().invert()
+}
+for (const [bone, arr] of Object.entries(ANI_RIG_B)) {
+  ANI_INV_B_QUATS[bone] = new THREE.Quaternion(...arr).invert()
 }
 
 /**
@@ -321,6 +274,7 @@ export class Speech2MotionManager {
     this._tempQuatA = new THREE.Quaternion()
     this._tempQuatB = new THREE.Quaternion()
     this._resultQuat = new THREE.Quaternion()
+    this._normTargetQuat = new THREE.Quaternion()
     this._tempVecA = new THREE.Vector3()
     this._tempVecB = new THREE.Vector3()
 
@@ -738,21 +692,21 @@ export class Speech2MotionManager {
     this.boneCache.clear()
 
     this.isAniModel = Boolean(this.vrm.scene.getObjectByName('Left_arm'))
-    this.needsAniRetarget = !this.isAniModel && Boolean(this.vrm.humanoid)
+    this.isVrm0 = this.vrm?.meta?.metaVersion === '0' || this.vrm?.meta?.specVersion === '0.0'
 
-    this.vrm.scene.traverse((obj) => {
-      if (obj.isBone || obj.isObject3D) {
-        if (obj.name) {
-          this.boneCache.set(obj.name, obj)
+    if (this.isAniModel) {
+      this.vrm.scene.traverse((obj) => {
+        if (obj.isBone || obj.isObject3D) {
+          if (obj.name) {
+            this.boneCache.set(obj.name, obj)
+          }
         }
-      }
-    })
-
-    if (this.needsAniRetarget && this.vrm.humanoid) {
+      })
+    } else if (this.vrm.humanoid) {
       for (const [s2mName, vrmName] of Object.entries(S2M_TO_VRM_MAP)) {
-        const bone = this.vrm.humanoid.getRawBoneNode?.(vrmName)
-        if (bone) {
-          this.boneCache.set(s2mName, bone)
+        const normNode = this.vrm.humanoid.getNormalizedBoneNode?.(vrmName)
+        if (normNode) {
+          this.boneCache.set(s2mName, normNode)
         }
       }
     }
@@ -762,12 +716,17 @@ export class Speech2MotionManager {
     if (!name || name === 'Root') return null
     if (this.boneCache.has(name)) return this.boneCache.get(name)
     if (!this.vrm || !this.vrm.scene) return null
-    let bone = this.vrm.scene.getObjectByName(name)
-    if (!bone && this.vrm.humanoid && S2M_TO_VRM_MAP[name]) {
-      bone = this.vrm.humanoid.getRawBoneNode?.(S2M_TO_VRM_MAP[name])
+
+    if (this.isAniModel) {
+      const bone = this.vrm.scene.getObjectByName(name)
+      if (bone) this.boneCache.set(name, bone)
+      return bone
+    } else if (this.vrm.humanoid && S2M_TO_VRM_MAP[name]) {
+      const normNode = this.vrm.humanoid.getNormalizedBoneNode?.(S2M_TO_VRM_MAP[name])
+      if (normNode) this.boneCache.set(name, normNode)
+      return normNode
     }
-    if (bone) this.boneCache.set(name, bone)
-    return bone
+    return null
   }
 
   /**
@@ -1469,7 +1428,7 @@ export class Speech2MotionManager {
         // Apply dynamic posture-dependent outward abduction offset to Left_arm and Right_arm ONLY during calm idle
         // For action gestures (blow kiss, heart fingers, clapping, bowing, etc.), keep 100% native mocap arm angles!
         const isActionTrack = Boolean(data.motion_record_id || data.is_action_gesture || (data.motion_keywords && data.motion_keywords.length > 0))
-        if (!isActionTrack) {
+        if (this.isAniModel && !isActionTrack) {
           if (jName === 'Left_arm') {
             this._tempVecA.set(1, 0, 0).applyQuaternion(quat)
             const downFactor = Math.max(0, Math.min(1, (-this._tempVecA.y - 0.25) / 0.45))
@@ -1730,32 +1689,54 @@ export class Speech2MotionManager {
 
       const quatB = frameB.rotations.get(jointName) || quatA
 
-      let targetQuatA = quatA
-      let targetQuatB = quatB
-      if (this.needsAniRetarget && INV_ANI_REST_QUATS[jointName]) {
-        const invRest = INV_ANI_REST_QUATS[jointName]
-        targetQuatA = this._tempQuatA.copy(invRest).multiply(quatA).normalize()
-        targetQuatB = this._tempQuatB.copy(invRest).multiply(quatB).normalize()
-      }
-
       // Interpolate keyframes of current track
-      this._resultQuat.copy(targetQuatA).slerp(targetQuatB, alpha)
+      this._resultQuat.copy(quatA).slerp(quatB, alpha)
 
-      if (inTransition && this.transitionFromPose.has(jointName)) {
-        // Blend seamlessly from the previous track's final pose
-        const fromQuat = this.transitionFromPose.get(jointName)
-        bone.quaternion.copy(fromQuat).slerp(this._resultQuat, transitionAlpha)
+      if (this.isAniModel) {
+        if (inTransition && this.transitionFromPose.has(jointName)) {
+          // Blend seamlessly from the previous track's final pose
+          const fromQuat = this.transitionFromPose.get(jointName)
+          bone.quaternion.copy(fromQuat).slerp(this._resultQuat, transitionAlpha)
+        } else {
+          bone.quaternion.copy(this._resultQuat)
+        }
       } else {
-        bone.quaternion.copy(this._resultQuat)
+        const vrmBoneName = S2M_TO_VRM_MAP[jointName]
+        const P = ANI_P_QUATS[vrmBoneName]
+        const invB = ANI_INV_B_QUATS[vrmBoneName]
+        const invP = ANI_INV_P_QUATS[vrmBoneName]
+
+        if (P && invB && invP) {
+          // Inverse retarget transformation: R_norm = P * R_raw * B^-1 * P^-1
+          this._normTargetQuat.copy(P).multiply(this._resultQuat).multiply(invB).multiply(invP)
+          if (this.isVrm0) {
+            // VRM 0.0 humanoid normalized space inverts X and Z axes compared to VRM 1.0
+            this._normTargetQuat.x = -this._normTargetQuat.x
+            this._normTargetQuat.z = -this._normTargetQuat.z
+          }
+
+          if (inTransition && this.transitionFromPose.has(jointName)) {
+            const fromQuat = this.transitionFromPose.get(jointName)
+            bone.quaternion.copy(fromQuat).slerp(this._normTargetQuat, transitionAlpha)
+          } else {
+            bone.quaternion.copy(this._normTargetQuat)
+          }
+        }
       }
     }
 
-    // Layer subtle organic idle standing movements (faded out when speaking or in action gesture):
-    this._applyIdleNeckMovement(safeDelta)
-    this._applyIdleHandMovements(safeDelta)
+    if (!this.isAniModel && this.vrm?.humanoid?.update) {
+      this.vrm.humanoid.update()
+    }
 
-    // Organic idle head shifts & natural gaze wander (suppressed during speech/action to maintain eye contact):
-    this._applyNaturalHeadAndGaze(safeDelta)
+    if (this.isAniModel) {
+      // Layer subtle organic idle standing movements (faded out when speaking or in action gesture):
+      this._applyIdleNeckMovement(safeDelta)
+      this._applyIdleHandMovements(safeDelta)
+
+      // Organic idle head shifts & natural gaze wander (suppressed during speech/action to maintain eye contact):
+      this._applyNaturalHeadAndGaze(safeDelta)
+    }
 
     // 2. Apply Blendshapes
     if (this.vrm.expressionManager) {
