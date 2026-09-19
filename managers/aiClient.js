@@ -423,26 +423,7 @@ export class AIClient {
       speechConfig: {
         voiceConfig: { prebuiltVoiceConfig: { voiceName: (typeof localStorage !== 'undefined' ? localStorage.getItem('vrm_selected_voice') : null) || 'Zephyr' } },
       },
-      mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
-      enableAffectiveDialog: true,
-      proactivity: {
-        proactiveAudio: true,
-      },
-      realtimeInputConfig: {
-        automaticActivityDetection: {
-          disabled: false,
-          startOfSpeechSensitivity: 'START_SENSITIVITY_LOW',
-          endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
-          prefixPaddingMs: 20,
-          silenceDurationMs: 600,
-        },
-      },
-      contextWindowCompression: {
-        triggerTokens: '104857',
-        slidingWindow: { targetTokens: '52428' },
-      },
       sessionResumption: resumeHandle ? { handle: resumeHandle } : {},
-      // Restored transcription settings (empty object uses default model)
       inputAudioTranscription: {},
       outputAudioTranscription: {},
       ...(isExtendedThinking
