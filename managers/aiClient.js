@@ -1412,7 +1412,7 @@ export class AIClient {
         if (!base64Audio) continue
 
         await this.activeSession.sendRealtimeInput({
-          media: { mimeType: 'audio/pcm;rate=16000', data: base64Audio },
+          audio: { mimeType: 'audio/pcm;rate=16000', data: base64Audio },
         })
       }
 
@@ -1423,7 +1423,7 @@ export class AIClient {
       const silenceBase64 = this._encodeInt16ToBase64(new Int16Array(silenceSamples))
       if (silenceBase64) {
         await this.activeSession.sendRealtimeInput({
-          media: { mimeType: 'audio/pcm;rate=16000', data: silenceBase64 },
+          audio: { mimeType: 'audio/pcm;rate=16000', data: silenceBase64 },
         })
       }
 
@@ -2132,7 +2132,7 @@ export class AIClient {
     if (!this.activeSession || !this.isSessionOpen) return
     try {
       await this.activeSession.sendRealtimeInput({
-        media: { mimeType: 'audio/pcm;rate=16000', data: base64Audio },
+        audio: { mimeType: 'audio/pcm;rate=16000', data: base64Audio },
       })
     } catch (e) {
       const errMsg = String(e?.message || '').toLowerCase()
