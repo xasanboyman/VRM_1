@@ -113,21 +113,9 @@ const createGetTokenMiddleware = (apiKey, model) => {
         return
       }
 
-      const { GoogleGenAI } = await import('@google/genai')
-      const client = new GoogleGenAI({ apiKey, apiVersion: 'v1alpha' })
-      const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString()
-      const token = await client.authTokens.create({
-        config: {
-          uses: 5,
-          expireTime: expireTime,
-          newSessionExpireTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-          httpOptions: { apiVersion: 'v1alpha' }
-        }
-      })
-
       res.statusCode = 200
       res.setHeader('content-type', 'application/json; charset=utf-8')
-      res.end(JSON.stringify({ token: token.name }))
+      res.end(JSON.stringify({ token: apiKey }))
     } catch (error) {
       console.error('Vite local middleware failed to generate token:', error)
       res.statusCode = 500

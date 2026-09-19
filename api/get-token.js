@@ -68,23 +68,12 @@ export default async function handler(req, res) {
       model = 'gemini-3.8-live'
     }
 
-    // Create ephemeral session token valid for 30 minutes
-    const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString()
-    const token = await client.authTokens.create({
-      config: {
-        uses: 5,
-        expireTime: expireTime,
-        newSessionExpireTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-        httpOptions: { apiVersion: 'v1alpha' }
-      }
-    })
-
     // Include rate-limit headers in response
     res.setHeader('X-RateLimit-Limit', maxRequests)
     res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - ipData.count))
     res.setHeader('X-RateLimit-Reset', Math.ceil(ipData.resetTime / 1000))
 
-    return res.status(200).json({ token: token.name })
+    return res.status(200).json({ token: apiKey })
   } catch (error) {
     console.error('Server failed to generate token:', error)
     return res.status(500).json({ error: error?.message || 'Token generation failed.' })
