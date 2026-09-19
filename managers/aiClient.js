@@ -710,6 +710,22 @@ export class AIClient {
 
             const reason = e.reason || 'Connection lost'
 
+            // If connection closed before session was ever established, it is a setup rejection (quota/key issue)
+            const isSetupRejection = !this.isSessionOpen && (e.code === 1011 || e.code === 1008 || e.code === 1003 || reason.includes('quota') || reason.includes('Internal error'))
+            if (isSetupRejection) {
+              const quotaMsg = e.code === 1008 
+                ? 'Authentication failed: Invalid API key or unauthorized caller.'
+                : 'Gemini Live Quota Exceeded (Code 1011): Your Google AI Studio project has exceeded its Live audio streaming quota. Please check https://ai.google.dev/pricing or enable Pay-As-You-Go billing.'
+              console.error('❌ ' + quotaMsg)
+              onSystemMessage?.(
+                'Gemini Live Quota Exceeded',
+                'Your Google AI Studio key has exceeded its Live streaming quota (Code 1011). Please enable billing on Google AI Studio or use a key with active quota.',
+                'error',
+              )
+              this.disconnect('Setup rejected: ' + (e.code === 1008 ? 'Authentication failed' : 'Quota exceeded'))
+              return
+            }
+
             console.log(`Connection dropped unexpectedly (${reason}).`)
 
             this._scheduleReconnect(onSystemMessage, reason)
