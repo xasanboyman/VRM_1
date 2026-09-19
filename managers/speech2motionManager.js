@@ -1205,6 +1205,7 @@ export class Speech2MotionManager {
       this._prefetchNextIdle()
     } catch (err) {
       console.warn('Speech2Motion _transitionToFreshIdle error:', err)
+      this._lastIdleRetryTime = Date.now() + 25000 // Gracefully back off for 30 seconds before retrying
     } finally {
       this._isGeneratingFreshIdle = false
     }

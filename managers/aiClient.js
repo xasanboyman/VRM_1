@@ -2486,14 +2486,21 @@ export class AIClient {
           },
         ];
 
-    return [
+    const tools = [
       {
         functionDeclarations: rawDeclarations.map((decl) => ({
           behavior: 'NON_BLOCKING',
           ...decl,
         })),
       },
-      { googleSearch: {} },
     ]
+
+    // Google Search Grounding requires a paid billing tier on Google AI Studio / Gemini Live.
+    // Only include if explicitly enabled to prevent immediate CloseEvent 1011 (quota exceeded).
+    if (import.meta.env?.VITE_ENABLE_GOOGLE_SEARCH === 'true') {
+      tools.push({ googleSearch: {} })
+    }
+
+    return tools
   }
 }
