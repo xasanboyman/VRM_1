@@ -812,14 +812,6 @@ export class AIClient {
         'Sending realtime text to active session:',
         normalizedText.substring(0, 50) + '...',
       )
-      if (typeof this.activeSession?.sendRealtimeInput === 'function') {
-        try {
-          await this.activeSession.sendRealtimeInput({ text: normalizedText })
-          return
-        } catch (realtimeErr) {
-          console.warn('sendRealtimeInput for text failed, falling back to sendClientContent:', realtimeErr)
-        }
-      }
       await this._sendClientContent([
         { role: 'user', parts: [{ text: normalizedText }] },
       ], true)
