@@ -1507,11 +1507,14 @@ export class AnimationManager {
   }
 
   update(delta) {
-    const isSpeech2MotionActive = this.speech2motion && this.speech2motion.enabled
+    const hasSpeech2MotionTrack = Boolean(this.speech2motion?.currentTrack)
+    const isSpeech2MotionActive = this.speech2motion && this.speech2motion.enabled && hasSpeech2MotionTrack
 
-    if (isSpeech2MotionActive) {
+    if (this.speech2motion && this.speech2motion.enabled) {
       this.speech2motion.update(delta)
-    } else {
+    }
+
+    if (!isSpeech2MotionActive) {
       if (this.vrm && this.vrm.humanoid) {
         // Reset rotations of bones that we procedurally animate to prevent accumulated rotation drift
         const proceduralBones = ['spine', 'chest', 'hips', 'head', 'neck', 'leftShoulder', 'rightShoulder']

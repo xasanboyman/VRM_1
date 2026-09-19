@@ -219,6 +219,7 @@ export class Speech2MotionManager {
     this.wsPendingRequests = new Map()
     this.wsReconnectTimer = null
     this._lastIdleRetryTime = 0
+    this._lastBackendErrorTime = 0
 
     // Playback state
     this.currentTrack = null
@@ -750,11 +751,16 @@ export class Speech2MotionManager {
         this.idleBlendWeight = 1.0
         this.transitionElapsed = this.transitionBlendDuration
         this._prefetchNextIdle()
+      } else {
+        console.warn('Speech2Motion: Initial idle track unavailable from backend, using procedural fallback')
+        this._lastBackendErrorTime = Date.now()
+        this._lastIdleRetryTime = Date.now()
       }
     } catch (err) {
       console.warn('Speech2Motion: Initial idle fetch failed (backend error), falling back to procedural idle:', err.message)
+      this._lastBackendErrorTime = Date.now()
       this._lastPrefetchErrorTime = Date.now()
-      this._lastIdleRetryTime = Date.now() + 30000
+      this._lastIdleRetryTime = Date.now()
     }
   }
 
@@ -860,6 +866,11 @@ export class Speech2MotionManager {
     motionRecordId = null,
     isActionGesture = false,
   }) {
+    const now = Date.now()
+    if (this._lastBackendErrorTime && (now - this._lastBackendErrorTime < 30000)) {
+      return null
+    }
+
     const cleanSpeechText = (speechText && speechText !== '...') ? (stripExpressionCommands(speechText) || '...') : '...'
     const payload = {
       speech_text: cleanSpeechText,
@@ -902,7 +913,8 @@ export class Speech2MotionManager {
       }
       return track
     } catch (err) {
-      console.warn('Speech2Motion fetch failed:', err)
+      this._lastBackendErrorTime = Date.now()
+      console.warn('Speech2Motion fetch failed (backing off 30s):', err.message || err)
       return null
     }
   }
@@ -1155,9 +1167,19 @@ export class Speech2MotionManager {
    */
   async _transitionToFreshIdle(reason = 'unknown') {
     if (this._isGeneratingFreshIdle || this.isActionGestureActive || this.isFetchingActionGesture) {
-      console.log(`Speech2Motion: _transitionToFreshIdle blocked (reason: ${reason}), isActionGestureActive=${this.isActionGestureActive}, isFetchingActionGesture=${this.isFetchingActionGesture}`)
       return
     }
+
+    const now = Date.now()
+    if (this._lastBackendErrorTime && (now - this._lastBackendErrorTime < 30000)) {
+      if (this.currentTrack) {
+        this.playbackTime = 0
+        this.currentTrack.is_idle = true
+        this.isIdleActive = true
+      }
+      return
+    }
+
     this._isGeneratingFreshIdle = true
 
     console.log(`🔄 Speech2Motion: Generating fresh idle track (reason: ${reason})...`)
@@ -1178,16 +1200,20 @@ export class Speech2MotionManager {
     try {
       const freshTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
       if (!freshTrack) {
-        console.warn('Speech2Motion: Failed to fetch fresh idle, keeping fallback')
-        this._isGeneratingFreshIdle = false
+        console.warn('Speech2Motion: Failed to fetch fresh idle, backing off for 30s')
+        this._lastBackendErrorTime = Date.now()
         this._lastIdleRetryTime = Date.now()
+        if (this.currentTrack) {
+          this.playbackTime = 0
+          this.currentTrack.is_idle = true
+          this.isIdleActive = true
+        }
         return
       }
 
       // If a new speech utterance or action gesture started while fetching, do not overwrite
       if (this.isSpeechActive || this.isActionGestureActive || this.isFetchingActionGesture) {
         console.log('Speech2Motion: Speech/gesture began during fresh idle fetch; discarding stale idle')
-        this._isGeneratingFreshIdle = false
         return
       }
 
@@ -1213,7 +1239,13 @@ export class Speech2MotionManager {
       this._prefetchNextIdle()
     } catch (err) {
       console.warn('Speech2Motion _transitionToFreshIdle error:', err)
-      this._lastIdleRetryTime = Date.now() + 25000 // Gracefully back off for 30 seconds before retrying
+      this._lastBackendErrorTime = Date.now()
+      this._lastIdleRetryTime = Date.now()
+      if (this.currentTrack) {
+        this.playbackTime = 0
+        this.currentTrack.is_idle = true
+        this.isIdleActive = true
+      }
     } finally {
       this._isGeneratingFreshIdle = false
     }
@@ -1666,6 +1698,10 @@ export class Speech2MotionManager {
       } else if (this.isInfiniteActive) {
         // Finished a gesture/emotion/speech motion: generate fresh idle!
         this._transitionToFreshIdle('update_track_ended')
+        this.playbackTime = 0
+        if (this.currentTrack) {
+          this.currentTrack.is_idle = true
+        }
         return
       } else {
         this.isPlaying = false

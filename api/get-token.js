@@ -26,7 +26,7 @@ export default async function handler(req, res) {
 
   const now = Date.now()
   const windowMs = 60 * 1000 // 1 minute window
-  const maxRequests = 5      // Max 5 token generations per minute per IP
+  const maxRequests = 20     // Max 20 token generations per minute per IP
 
   let ipData = rateLimitCache.get(clientIp)
 

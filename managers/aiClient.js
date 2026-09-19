@@ -775,44 +775,14 @@ export class AIClient {
       historyOnly = false,
     } = options
 
-    const safeHistory = Array.isArray(history) ? history : []
-    const validHistory = safeHistory.filter((m) => m?.text && m.text.trim().length > 0)
+    if (historyOnly) {
+      return
+    }
+
     const normalizedPendingQuestion =
       typeof pendingQuestion === 'string' ? pendingQuestion.trim() : ''
     const shouldRecoverQuestion =
       !replayPendingAudio && shouldAnswerPendingQuestion && normalizedPendingQuestion.length > 0
-
-    if (validHistory.length === 0 && !shouldRecoverQuestion && !replayPendingAudio) {
-      return
-    }
-
-    let contextHistory = validHistory
-    if ((shouldRecoverQuestion || replayPendingAudio) && validHistory.length > 0) {
-      const lastMsg = validHistory[validHistory.length - 1]
-      if (
-        lastMsg?.role === 'user' &&
-        (replayPendingAudio ||
-          String(lastMsg.text || '')
-            .trim()
-            .toLowerCase() === normalizedPendingQuestion.toLowerCase())
-      ) {
-        contextHistory = validHistory.slice(0, -1)
-      }
-    }
-
-    const historyTurns = contextHistory.map((msg) => ({
-      role: msg?.role === 'user' ? 'user' : 'model',
-      parts: [{ text: String(msg?.text || '') }],
-    }))
-
-    if (historyTurns.length > 0) {
-      // Past history turns are complete; commit them so session is ready for fresh input
-      await this._sendClientContent(historyTurns, true)
-    }
-
-    if (historyOnly) {
-      return
-    }
 
     if (shouldRecoverQuestion) {
       console.log('Restoring context with PENDING QUESTION:', normalizedPendingQuestion)
