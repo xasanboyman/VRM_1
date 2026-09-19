@@ -112,6 +112,22 @@ export class Audio2FaceManager {
       if (em.getExpression(vrmPreset)) target = vrmPreset
     }
 
+    // VRM 0.0 uppercase fallback ('A', 'I', 'U', 'E', 'O', 'Blink') if VRM 1.0 preset is missing
+    if (!target) {
+      const VRM0_MAP = {
+        aa: 'A',
+        ih: 'I',
+        ou: 'U',
+        ee: 'E',
+        oh: 'O',
+        blink: 'Blink',
+      }
+      const candidate = PHONEME_MAP[rawName] || ARKIT_MAP[lower] || lower
+      if (candidate && VRM0_MAP[candidate] && em.getExpression(VRM0_MAP[candidate])) {
+        target = VRM0_MAP[candidate]
+      }
+    }
+
     if (target && !em.getExpression(target)) {
       if (target === 'blinkLeft' || target === 'blinkRight') {
         target = em.getExpression('blink') ? 'blink' : null
