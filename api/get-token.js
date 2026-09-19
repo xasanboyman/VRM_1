@@ -72,9 +72,9 @@ export default async function handler(req, res) {
     const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString()
     const token = await client.authTokens.create({
       config: {
-        uses: 1, // Ephemeral token can only be used to start a single session for maximum security
+        uses: 5,
         expireTime: expireTime,
-        newSessionExpireTime: new Date(Date.now() + 1 * 60 * 1000).toISOString(),
+        newSessionExpireTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
         httpOptions: { apiVersion: 'v1alpha' }
       }
     })

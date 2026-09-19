@@ -423,7 +423,7 @@ export class AIClient {
       speechConfig: {
         voiceConfig: { prebuiltVoiceConfig: { voiceName: (typeof localStorage !== 'undefined' ? localStorage.getItem('vrm_selected_voice') : null) || 'Zephyr' } },
       },
-      sessionResumption: resumeHandle ? { handle: resumeHandle } : {},
+      ...(resumeHandle ? { sessionResumption: { handle: resumeHandle } } : {}),
       inputAudioTranscription: {},
       outputAudioTranscription: {},
       ...(isExtendedThinking

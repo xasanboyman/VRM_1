@@ -220,6 +220,7 @@ export class Speech2MotionManager {
     this.wsReconnectTimer = null
     this._lastIdleRetryTime = 0
     this._lastBackendErrorTime = 0
+    this._backendConsecutiveErrors = 0
 
     // Playback state
     this.currentTrack = null
@@ -764,13 +765,20 @@ export class Speech2MotionManager {
     }
   }
 
+  _getBackendBackoffDuration() {
+    const errCount = this._backendConsecutiveErrors || 0
+    if (errCount <= 0) return 30000
+    return Math.min(300000, 30000 * Math.pow(2, Math.min(4, errCount - 1)))
+  }
+
   /**
    * Asynchronously pre-fetch the next calm idle track.
    */
   async _prefetchNextIdle() {
     if (this.isFetchingNext || this.nextTrack || !this.isInfiniteActive || !this.isIdleActive) return
     const now = Date.now()
-    if (now - (this._lastPrefetchErrorTime || 0) < 30000) return
+    const backoff = this._getBackendBackoffDuration()
+    if (now - (this._lastPrefetchErrorTime || 0) < backoff || now - (this._lastBackendErrorTime || 0) < backoff) return
 
     this.isFetchingNext = true
     try {
@@ -780,7 +788,7 @@ export class Speech2MotionManager {
       }
     } catch (err) {
       this._lastPrefetchErrorTime = Date.now()
-      console.warn('Speech2Motion pre-fetch idle error (backed off 30s):', err.message)
+      console.warn(`Speech2Motion pre-fetch idle error (backed off ${Math.round(backoff / 1000)}s):`, err.message)
     } finally {
       this.isFetchingNext = false
     }
@@ -867,7 +875,8 @@ export class Speech2MotionManager {
     isActionGesture = false,
   }) {
     const now = Date.now()
-    if (this._lastBackendErrorTime && (now - this._lastBackendErrorTime < 30000)) {
+    const backoff = this._getBackendBackoffDuration()
+    if (this._lastBackendErrorTime && (now - this._lastBackendErrorTime < backoff)) {
       return null
     }
 
@@ -907,14 +916,17 @@ export class Speech2MotionManager {
         throw new Error(data.error || 'Empty motion payload')
       }
 
+      this._backendConsecutiveErrors = 0
       const track = this._parseMotionPayload(data)
       if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
         track.isActionGesture = true
       }
       return track
     } catch (err) {
+      this._backendConsecutiveErrors = (this._backendConsecutiveErrors || 0) + 1
       this._lastBackendErrorTime = Date.now()
-      console.warn('Speech2Motion fetch failed (backing off 30s):', err.message || err)
+      const currentBackoff = this._getBackendBackoffDuration()
+      console.warn(`Speech2Motion fetch failed (backing off ${Math.round(currentBackoff / 1000)}s):`, err.message || err)
       return null
     }
   }
@@ -1171,7 +1183,8 @@ export class Speech2MotionManager {
     }
 
     const now = Date.now()
-    if (this._lastBackendErrorTime && (now - this._lastBackendErrorTime < 30000)) {
+    const backoff = this._getBackendBackoffDuration()
+    if (this._lastBackendErrorTime && (now - this._lastBackendErrorTime < backoff)) {
       if (this.currentTrack) {
         this.playbackTime = 0
         this.currentTrack.is_idle = true
@@ -1200,7 +1213,7 @@ export class Speech2MotionManager {
     try {
       const freshTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
       if (!freshTrack) {
-        console.warn('Speech2Motion: Failed to fetch fresh idle, backing off for 30s')
+        console.warn(`Speech2Motion: Failed to fetch fresh idle, backing off for ${Math.round(backoff / 1000)}s`)
         this._lastBackendErrorTime = Date.now()
         this._lastIdleRetryTime = Date.now()
         if (this.currentTrack) {
@@ -1545,7 +1558,8 @@ export class Speech2MotionManager {
   update(delta) {
     if (!this.currentTrack || !this.vrm) {
       const now = Date.now()
-      if (this.isInfiniteActive && !this.isFetchingNext && !this.isSpeechActive && !this.isActionGestureActive && !this._isGeneratingFreshIdle && (now - (this._lastIdleRetryTime || 0) > 30000)) {
+      const backoff = this._getBackendBackoffDuration()
+      if (this.isInfiniteActive && !this.isFetchingNext && !this.isSpeechActive && !this.isActionGestureActive && !this._isGeneratingFreshIdle && (now - (this._lastIdleRetryTime || 0) > backoff)) {
         this._lastIdleRetryTime = now
         this._transitionToFreshIdle('update_no_track')
       }
