@@ -739,19 +739,23 @@ export class Speech2MotionManager {
     console.log('✨ Speech2Motion: Starting calm idle breathing pipeline...')
 
     // Fetch initial calm standing idle track (Record 721)
-    const initialTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
-    if (initialTrack) {
-      this.currentTrack = initialTrack
-      this.playbackTime = 0
-      this.isPlaying = true
-      this.isIdleActive = true
-      this.idleTimer = 0
-      this.idleBlendWeight = 1.0
-      this.transitionElapsed = this.transitionBlendDuration
+    try {
+      const initialTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
+      if (initialTrack) {
+        this.currentTrack = initialTrack
+        this.playbackTime = 0
+        this.isPlaying = true
+        this.isIdleActive = true
+        this.idleTimer = 0
+        this.idleBlendWeight = 1.0
+        this.transitionElapsed = this.transitionBlendDuration
+        this._prefetchNextIdle()
+      }
+    } catch (err) {
+      console.warn('Speech2Motion: Initial idle fetch failed (backend error), falling back to procedural idle:', err.message)
+      this._lastPrefetchErrorTime = Date.now()
+      this._lastIdleRetryTime = Date.now() + 30000
     }
-
-    // Pre-fetch next calm idle track so double-buffer queue is ready
-    this._prefetchNextIdle()
   }
 
   /**
@@ -759,6 +763,9 @@ export class Speech2MotionManager {
    */
   async _prefetchNextIdle() {
     if (this.isFetchingNext || this.nextTrack || !this.isInfiniteActive || !this.isIdleActive) return
+    const now = Date.now()
+    if (now - (this._lastPrefetchErrorTime || 0) < 30000) return
+
     this.isFetchingNext = true
     try {
       const track = await this._fetchTrack({ isIdle: true, duration: 4.0 })
@@ -766,7 +773,8 @@ export class Speech2MotionManager {
         this.nextTrack = track
       }
     } catch (err) {
-      console.warn('Speech2Motion pre-fetch idle error:', err)
+      this._lastPrefetchErrorTime = Date.now()
+      console.warn('Speech2Motion pre-fetch idle error (backed off 30s):', err.message)
     } finally {
       this.isFetchingNext = false
     }
@@ -1505,7 +1513,7 @@ export class Speech2MotionManager {
   update(delta) {
     if (!this.currentTrack || !this.vrm) {
       const now = Date.now()
-      if (this.isInfiniteActive && !this.isFetchingNext && !this.isSpeechActive && !this.isActionGestureActive && !this._isGeneratingFreshIdle && (now - (this._lastIdleRetryTime || 0) > 3000)) {
+      if (this.isInfiniteActive && !this.isFetchingNext && !this.isSpeechActive && !this.isActionGestureActive && !this._isGeneratingFreshIdle && (now - (this._lastIdleRetryTime || 0) > 30000)) {
         this._lastIdleRetryTime = now
         this._transitionToFreshIdle('update_no_track')
       }

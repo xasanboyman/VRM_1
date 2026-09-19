@@ -461,46 +461,49 @@ export class AIClient {
         callbacks: {
           onopen: () => {
             if (this.currentConnectionId !== connectionId) return
-            console.log('✅ Live Session Started')
-            this.isSessionOpen = true
+            console.log('🔌 Live WebSocket Connected, awaiting server setupComplete...')
             this.reconnectAttempts = 0
             this.reconnectHistorySuggestionSent = false
             this._clearReconnectTimer()
             this.goAwayNotified = false
             this.goAwayTimeLeft = ''
-
-            if (this.isReconnecting) {
-              onSystemMessage?.(
-                'Reconnected',
-                isUsingSessionResumption
-                  ? 'Resumed live session from server state'
-                  : 'Restored connection & context',
-                'success',
-              )
-              this.isReconnecting = false
-            } else {
-              // Only show connected message if not silently restarting for text
-              if (!initialMessage) {
-                onSystemMessage?.(
-                  'Connected',
-                  isUsingSessionResumption ? 'Live session resumed' : 'Live session started',
-                  'success',
-                )
-              }
-            }
-
-            // 2️⃣ Restore Context Immediately
-            void this._finalizeSessionOpen({
-              combinedHistory: historyForConnection,
-              pendingUserQuestion,
-              shouldAnswerPendingQuestion,
-              shouldReplayPendingAudio,
-              enableMic,
-              isUsingSessionResumption,
-            })
           },
           onmessage: (msg) => {
             if (this.currentConnectionId !== connectionId) return
+
+            if (msg.setupComplete) {
+              console.log('✅ Live Session SetupComplete received -> Session Ready')
+              this.isSessionOpen = true
+
+              if (this.isReconnecting) {
+                onSystemMessage?.(
+                  'Reconnected',
+                  isUsingSessionResumption
+                    ? 'Resumed live session from server state'
+                    : 'Restored connection & context',
+                  'success',
+                )
+                this.isReconnecting = false
+              } else {
+                if (!initialMessage) {
+                  onSystemMessage?.(
+                    'Connected',
+                    isUsingSessionResumption ? 'Live session resumed' : 'Live session started',
+                    'success',
+                  )
+                }
+              }
+
+              // Restore Context and start Mic strictly AFTER setupComplete
+              void this._finalizeSessionOpen({
+                combinedHistory: historyForConnection,
+                pendingUserQuestion,
+                shouldAnswerPendingQuestion,
+                shouldReplayPendingAudio,
+                enableMic,
+                isUsingSessionResumption,
+              })
+            }
 
             if (msg.usageMetadata || msg.usage_metadata) {
               const usage = msg.usageMetadata || msg.usage_metadata
@@ -1461,7 +1464,7 @@ export class AIClient {
         if (!base64Audio) continue
 
         await this.activeSession.sendRealtimeInput({
-          audio: { mimeType: 'audio/pcm;rate=16000', data: base64Audio },
+          media: { mimeType: 'audio/pcm;rate=16000', data: base64Audio },
         })
       }
 
@@ -1472,7 +1475,7 @@ export class AIClient {
       const silenceBase64 = this._encodeInt16ToBase64(new Int16Array(silenceSamples))
       if (silenceBase64) {
         await this.activeSession.sendRealtimeInput({
-          audio: { mimeType: 'audio/pcm;rate=16000', data: silenceBase64 },
+          media: { mimeType: 'audio/pcm;rate=16000', data: silenceBase64 },
         })
       }
 
@@ -1982,7 +1985,7 @@ export class AIClient {
     if (!this.activeSession || !this.isSessionOpen) return false
     try {
       await this.activeSession.sendRealtimeInput({
-        video: { mimeType: 'image/jpeg', data: base64Image },
+        media: { mimeType: 'image/jpeg', data: base64Image },
       })
       return true
     } catch (e) {
@@ -2181,7 +2184,7 @@ export class AIClient {
     if (!this.activeSession || !this.isSessionOpen) return
     try {
       await this.activeSession.sendRealtimeInput({
-        audio: { mimeType: 'audio/pcm;rate=16000', data: base64Audio },
+        media: { mimeType: 'audio/pcm;rate=16000', data: base64Audio },
       })
     } catch (e) {
       const errMsg = String(e?.message || '').toLowerCase()
