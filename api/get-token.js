@@ -63,7 +63,10 @@ export default async function handler(req, res) {
       },
     })
     
-    const model = process.env.VITE_GEMINI_LIVE_MODEL || process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live'
+    let model = process.env.VITE_GEMINI_LIVE_MODEL || process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live'
+    if (!model || model.includes('3.1') || model.includes('2.0') || model.includes('2.5')) {
+      model = 'gemini-3.8-live'
+    }
 
     // Create ephemeral session token valid for 30 minutes
     const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString()

@@ -126,7 +126,10 @@ export class AIClient {
         headers: { 'User-Agent': 'aistudio-build' },
       },
     })
-    this.liveModel = model || 'gemini-3.8-live'
+    const sanitizedModel = String(model || '').trim()
+    this.liveModel = (!sanitizedModel || sanitizedModel.includes('3.1') || sanitizedModel.includes('2.0') || sanitizedModel.includes('2.5'))
+      ? 'gemini-3.8-live'
+      : sanitizedModel
     this._loadSessionResumptionState()
     this._loadConversationProfile()
   }

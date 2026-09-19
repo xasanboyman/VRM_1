@@ -7,7 +7,10 @@ export class ConfigManager {
 
   getModel() {
     const configuredModel = String(import.meta.env.VITE_GEMINI_LIVE_MODEL || '').trim()
-    return configuredModel || 'gemini-3.8-live'
+    if (!configuredModel || configuredModel.includes('3.1') || configuredModel.includes('2.0') || configuredModel.includes('2.5')) {
+      return 'gemini-3.8-live'
+    }
+    return configuredModel
   }
 
   getRenderSettings() {
