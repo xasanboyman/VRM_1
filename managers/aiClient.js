@@ -1211,19 +1211,15 @@ export class AIClient {
       if (savedHistoryStr) {
         const fullHistory = JSON.parse(savedHistoryStr)
         if (Array.isArray(fullHistory) && fullHistory.length > 0) {
-          const useReconnect = isReconnectSession && !forceFreshSession
-          const cutoffIndex = useReconnect ? Math.max(0, fullHistory.length - 16) : 0
-          const olderHistory = fullHistory
-            .slice(0, useReconnect ? cutoffIndex : fullHistory.length)
-            // Remove any turns that mention end_conversation so the model
-            // does not think it should end the call in the new session.
+          const recentHistory = fullHistory
             .filter((item) => {
               const text = typeof item?.text === 'string' ? item.text : ''
-              return !text.includes('end_conversation')
+              return text.trim().length > 0 && !text.includes('end_conversation')
             })
+            .slice(-12)
 
-          if (olderHistory.length > 0) {
-            const formattedHistory = olderHistory.map(item => {
+          if (recentHistory.length > 0) {
+            const formattedHistory = recentHistory.map(item => {
               const roleLabel = item.role === 'user' ? 'User' : 'Riko (AI)'
               const cleanText = stripExpressionCommands(item.text || '')
               return `${roleLabel}: ${cleanText}`
