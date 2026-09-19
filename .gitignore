@@ -40,3 +40,7 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Intermediate & Large VRM Assets
+public/models/amir_temur*.vrm
+

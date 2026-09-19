@@ -102,14 +102,21 @@ export class VRMLoader {
 
     const isLegacyVrm0 = vrm.meta?.metaVersion === '0' || vrm.meta?.specVersion === '0.0'
     const isRiko = vrm.meta?.title === 'Riko' || vrm.meta?.name === 'Riko'
+    const isAmirTemur = vrm.meta?.name?.includes('Amir Temur') || vrm.meta?.title?.includes('Amir Temur')
 
     if (vrm.humanoid) {
       vrm.humanoid.autoUpdateHumanBones = isLegacyVrm0 ? true : false
     }
 
-    vrm.scene.rotation.y = (isRiko || isLegacyVrm0) ? Math.PI : 0
-    vrm.scene.scale.set(2, 2, 2)
-    vrm.scene.position.set(0, -1.2, -0.3)
+    if (isAmirTemur) {
+      vrm.scene.rotation.y = 0
+      vrm.scene.scale.set(1.6, 1.6, 1.6)
+      vrm.scene.position.set(0, -1.8, 0.4)
+    } else {
+      vrm.scene.rotation.y = (isRiko || isLegacyVrm0) ? Math.PI : 0
+      vrm.scene.scale.set(2, 2, 2)
+      vrm.scene.position.set(0, -1.2, -0.3)
+    }
 
     // Shadow flags are per-mesh in three.js — setting them on the root Group
     // alone does nothing. Traverse so shadows actually render, and disable

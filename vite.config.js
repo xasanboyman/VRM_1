@@ -500,7 +500,7 @@ export default defineConfig(({ mode }) => {
   const geminiApiKey = String(env.GEMINI_API_KEY || env.VITE_API_KEY || '').trim()
 
   const modelName = String(
-    env.VITE_GEMINI_LIVE_MODEL || env.GEMINI_LIVE_MODEL || 'gemini-3.1-flash-live-preview'
+    env.VITE_GEMINI_LIVE_MODEL || env.GEMINI_LIVE_MODEL || 'gemini-3.8-live'
   ).trim()
 
   if (!telegramBotToken) {

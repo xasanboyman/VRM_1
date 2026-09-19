@@ -854,6 +854,12 @@ export async function createVRMChatSystem(canvas, options = {}) {
           console.log('🏁 Gemini Live turnComplete received -> Flushing final model utterance')
           flushModelUtterance(true)
         },
+        () => {
+          console.log('⚡ Gemini Live: Model turn was interrupted by server -> clearing playback')
+          audioManager.interruptPlayback()
+          cancelPendingUtterance?.()
+          animationManager?.setSpeakingState(false)
+        },
       )
     },
 

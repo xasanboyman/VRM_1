@@ -26,13 +26,14 @@ Key capabilities:
 
 ## Models
 
-- `gemini-3.1-flash-live-preview` — Optimized for low-latency, real-time dialogue. Native audio output, thinking (via `thinkingLevel`). 128k context window. **This is the recommended model for all Live API use cases.**
+- `gemini-3.8-live` — Ultra-low latency audio-to-audio interactions, asynchronous function calling, proactive audio permanently enabled. **This is the recommended model for all Live API use cases.**
 - `gemini-3.5-transcribe-live` — Real-time streaming speech-to-text with interim hypotheses, finalized transcripts, smart formatting, and Hybrid VAD.
 - `gemini-3.5-live-translate-preview` — Real-time streaming translation model.
 
 > [!WARNING]
-> The following Live API models are **deprecated** and will be shut down. Migrate to `gemini-3.1-flash-live-preview`.
-> - `gemini-2.5-flash-native-audio-preview-12-2025` — Migrate to `gemini-3.1-flash-live-preview`.
+> The following Live API models are **deprecated** and will be shut down. Migrate to `gemini-3.8-live`.
+> - `gemini-3.1-flash-live-preview` — Migrate to `gemini-3.8-live`.
+> - `gemini-2.5-flash-native-audio-preview-12-2025` — Migrate to `gemini-3.8-live`.
 > - `gemini-live-2.5-flash-preview` — Released June 17, 2025. Shutdown: December 9, 2025.
 > - `gemini-2.0-flash-live-001` — Released April 9, 2025. Shutdown: December 9, 2025.
 
@@ -101,14 +102,14 @@ config = types.LiveConnectConfig(
     )
 )
 
-async with client.aio.live.connect(model="gemini-3.1-flash-live-preview", config=config) as session:
+async with client.aio.live.connect(model="gemini-3.8-live", config=config) as session:
     pass  # Session is active
 ```
 
 #### JavaScript
 ```js
 const session = await ai.live.connect({
-  model: 'gemini-3.1-flash-live-preview',
+  model: 'gemini-3.8-live',
   config: {
     responseModalities: ['audio'],
     systemInstruction: { parts: [{ text: 'You are a helpful assistant.' }] }
@@ -327,11 +328,24 @@ session.sendRealtimeInput({ audioStreamEnd: true }); // Hybrid VAD
 - **Audio+video session** — 2 min without compression
 - **Connection lifetime** — ~10 min (use session resumption)
 - **Context window** — 128k tokens (native audio) / 32k tokens (standard)
-- **Async function calling** — Not yet supported; function calling is synchronous only. The model will not start responding until you've sent the tool response.
-- **Proactive audio** — Not yet supported in Gemini 3.1 Flash Live. Remove any configuration for this feature.
-- **Affective dialogue** — Not yet supported in Gemini 3.1 Flash Live. Remove any configuration for this feature.
+- **Async function calling** — Supported via `behavior: 'NON_BLOCKING'` and response scheduling (`SILENT`, `WHEN_IDLE`, `INTERRUPT`).
+- **Proactive audio** — Supported with `proactivity: { proactiveAudio: true }`.
+- **Affective dialog** — Supported with `enableAffectiveDialog: true` (`v1beta`).
 - **Code execution** — Not supported
 - **URL context** — Not supported
+
+## Migrating from Gemini 3.1 Flash Live to Gemini 3.8 Live
+
+When migrating from `gemini-3.1-flash-live-preview` to `gemini-3.8-live`:
+
+1. **Model string** — Update from `gemini-3.1-flash-live-preview` to `gemini-3.8-live`.
+2. **Thinking level** — `thinking_level` is not supported for `gemini-3.8-live`. Omit `thinking_level` (or `thinking_config`) from your session setup.
+3. **Asynchronous function calling** — Async execution (`behavior: NON_BLOCKING`) is now the default function calling mode. Synchronous blocking mode can still be set using `behavior: BLOCKING` on tool declarations. Function scheduling (`SILENT`, `WHEN_IDLE`, `INTERRUPTED`) is supported.
+4. **Client content updates** — `send_client_content` is supported throughout the entire session lifecycle with explicit roles (`user` or `model`). Setting `turn_complete=true` unconditionally interrupts active model generation.
+5. **Proactive audio** — Proactive audio is now permanently enabled. Setting `proactive_audio: false` returns an error.
+6. **Affective dialogue** — Affective dialogue is removed from the API. Remove any `enable_affective_dialog` configurations.
+7. **Turn coverage** — Defaults to `TURN_INCLUDES_AUDIO_ACTIVITY_AND_ALL_VIDEO`. Video frames are sent to the model by default.
+8. **Response modalities** — Audio is the supported response modality (`Modality.AUDIO`). Enable output audio transcription (`outputAudioTranscription: {}`) if text transcripts are needed.
 
 ## Migrating from Gemini 2.5 Flash Live
 

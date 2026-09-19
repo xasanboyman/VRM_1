@@ -56,7 +56,7 @@ export default async function handler(req, res) {
 
     const client = new GoogleGenAI({ apiKey })
     
-    const model = process.env.VITE_GEMINI_LIVE_MODEL || process.env.GEMINI_LIVE_MODEL || 'gemini-3.1-flash-live-preview'
+    const model = process.env.VITE_GEMINI_LIVE_MODEL || process.env.GEMINI_LIVE_MODEL || 'gemini-3.8-live'
 
     // Create ephemeral session token valid for 30 minutes
     const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString()

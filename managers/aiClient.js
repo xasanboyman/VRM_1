@@ -118,8 +118,12 @@ export class AIClient {
   constructor(apiKey, model) {
     this.apiKey = apiKey
     const apiVersion = apiKey?.startsWith('auth_tokens/') ? 'v1alpha' : 'v1beta'
-    this.client = new GoogleGenAI({ apiKey: apiKey || 'dummy-key-to-prevent-throw', apiVersion })
-    this.liveModel = model || 'gemini-3.1-flash-live-preview'
+    this.client = new GoogleGenAI({
+      apiKey: apiKey || 'dummy-key-to-prevent-throw',
+      apiVersion,
+      httpOptions: { apiVersion },
+    })
+    this.liveModel = model || 'gemini-3.8-live'
     this._loadSessionResumptionState()
     this._loadConversationProfile()
   }
@@ -128,7 +132,11 @@ export class AIClient {
 
   updateToken(token) {
     const apiVersion = token?.startsWith('auth_tokens/') ? 'v1alpha' : 'v1beta'
-    this.client = new GoogleGenAI({ apiKey: token, apiVersion })
+    this.client = new GoogleGenAI({
+      apiKey: token,
+      apiVersion,
+      httpOptions: { apiVersion },
+    })
   }
 
   setTokenProvider(provider) {
@@ -197,6 +205,7 @@ export class AIClient {
     onCueCardShow = null,
     onCueCardDismiss = null,
     onTurnComplete = null,
+    onInterrupted = null,
   ) {
     if (this.activeSession) return
 
@@ -248,6 +257,7 @@ export class AIClient {
         onCueCardShow: typeof onCueCardShow === 'function' ? onCueCardShow : null,
         onCueCardDismiss: typeof onCueCardDismiss === 'function' ? onCueCardDismiss : null,
         onTurnComplete: typeof onTurnComplete === 'function' ? onTurnComplete : null,
+        onInterrupted: typeof onInterrupted === 'function' ? onInterrupted : null,
       }
 
       await this._establishConnection()
@@ -397,24 +407,43 @@ export class AIClient {
 
     const tools = this._getTools(animList)
 
+    const isExtendedThinking = this.liveModel.includes('extended-thinking')
+
     const config = {
       responseModalities: ['AUDIO'],
       speechConfig: {
         voiceConfig: { prebuiltVoiceConfig: { voiceName: (typeof localStorage !== 'undefined' ? localStorage.getItem('vrm_selected_voice') : null) || 'Zephyr' } },
       },
+      mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+      enableAffectiveDialog: true,
+      proactivity: {
+        proactiveAudio: true,
+      },
       realtimeInputConfig: {
-        automaticActivityDetection: {},
+        automaticActivityDetection: {
+          disabled: false,
+          startOfSpeechSensitivity: 'START_SENSITIVITY_LOW',
+          endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
+          prefixPaddingMs: 20,
+          silenceDurationMs: 600,
+        },
       },
       contextWindowCompression: {
-        slidingWindow: {},
+        triggerTokens: '104857',
+        slidingWindow: { targetTokens: '52428' },
       },
       sessionResumption: resumeHandle ? { handle: resumeHandle } : {},
       // Restored transcription settings (empty object uses default model)
       inputAudioTranscription: {},
       outputAudioTranscription: {},
-      thinkingConfig: {
-        thinkingLevel: 'minimal',
-      },
+      ...(isExtendedThinking
+        ? {
+            thinkingConfig: {
+              thinkingLevel: 'low',
+              includeThoughts: true,
+            },
+          }
+        : {}),
       tools: tools,
       systemInstruction,
     }
@@ -533,6 +562,9 @@ export class AIClient {
 
             if (content?.interrupted) {
               console.log('⚡ Gemini Live: Model turn was interrupted by server')
+              this._setUserSpeakingState(false)
+              this._clearUserSpeechReleaseTimer()
+              this.connectionArgs?.onInterrupted?.()
             }
 
             if (content?.outputTranscription) {
@@ -605,6 +637,9 @@ export class AIClient {
                   if (samples > 0) {
                     onAudioData?.(new Int16Array(bytes.buffer, bytes.byteOffset, samples))
                   }
+                }
+                if (part.thought) {
+                  console.debug('💭 Gemini Live Thought:', part.text)
                 }
                 if (
                   !content?.outputTranscription &&
@@ -1647,25 +1682,25 @@ export class AIClient {
     if (name === 'trigger_gesture' || name === 'trigger_animation') {
       const gestureName = args?.gesture || args?.animation_name || args?.name
       onAnimationTrigger?.(gestureName)
-      return { id, name, response: { result: 'ok', gesture: gestureName } }
+      return { id, name, response: { result: 'ok', gesture: gestureName }, scheduling: 'SILENT' }
     }
 
     if (name === 'set_user_name') {
       this.setConversationProfile({ userName: args?.name })
       onUserNameSet?.(args.name)
-      return { id, name, response: { result: 'ok' } }
+      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
     }
 
     if (name === 'save_memory') {
       this._setConversationMemory(args?.key, args?.value)
       onMemorySaved?.(args.key, args.value)
-      return { id, name, response: { result: 'ok' } }
+      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
     }
 
     if (name === 'delete_memory') {
       this._deleteConversationMemory(args?.key)
       onMemoryDeleted?.(args.key)
-      return { id, name, response: { result: 'ok' } }
+      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
     }
 
     if (name === 'start_timer') {
@@ -1675,23 +1710,24 @@ export class AIClient {
           id,
           name,
           response: { error: 'duration_seconds must be a positive number of seconds.' },
+          scheduling: 'SILENT',
         }
       }
 
       const label = typeof args?.label === 'string' ? args.label : 'Timer'
       this.connectionArgs?.onTimerStart?.({ duration_seconds: durationSeconds, label })
-      return { id, name, response: { result: 'ok' } }
+      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
     }
 
     if (name === 'cancel_timer') {
       this.connectionArgs?.onTimerCancel?.()
-      return { id, name, response: { result: 'ok' } }
+      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
     }
 
     if (name === 'show_cue_card') {
       const topic = typeof args?.topic === 'string' ? args.topic.trim() : ''
       if (!topic) {
-        return { id, name, response: { error: 'topic is required' } }
+        return { id, name, response: { error: 'topic is required' }, scheduling: 'SILENT' }
       }
       const prompt = typeof args?.prompt === 'string' ? args.prompt.trim() : 'You should say:'
       const bullet_points = Array.isArray(args?.bullet_points) ? args.bullet_points : []
@@ -1707,12 +1743,12 @@ export class AIClient {
         prep_time_seconds,
         speak_time_seconds,
       })
-      return { id, name, response: { result: 'ok' } }
+      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
     }
 
     if (name === 'dismiss_cue_card') {
       this.connectionArgs?.onCueCardDismiss?.()
-      return { id, name, response: { result: 'ok' } }
+      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
     }
 
     if (name === 'end_conversation') {
@@ -1728,16 +1764,16 @@ export class AIClient {
         }
       }
       setTimeout(checkAndDisconnect, 1500)
-      return { id, name, response: { result: 'ok' } }
+      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
     }
 
     if (name === 'set_background_image') {
       const prompt = args?.prompt
       if (typeof prompt === 'string' && prompt.trim().length > 0) {
         this._handleSetBackgroundImageAsync(prompt.trim())
-        return { id, name, response: { result: 'Background image update queued.' } }
+        return { id, name, response: { result: 'Background image update queued.' }, scheduling: 'WHEN_IDLE' }
       } else {
-        return { id, name, response: { error: 'Prompt is required.' } }
+        return { id, name, response: { error: 'Prompt is required.' }, scheduling: 'SILENT' }
       }
     }
 
@@ -1775,7 +1811,7 @@ export class AIClient {
     if (name === 'set_expression') {
       const expressionName = args?.expression
       onExpressionTrigger?.(expressionName, args?.duration || 5.0)
-      return { id, name, response: { result: 'ok', expression: expressionName } }
+      return { id, name, response: { result: 'ok', expression: expressionName }, scheduling: 'SILENT' }
     }
 
     if (name === 'trigger_special_effect') {
@@ -1787,7 +1823,7 @@ export class AIClient {
           window.effectsManager?.trigger(effectName, args)
         }
       }
-      return { id, name, response: { result: 'ok', effect: effectName, action: args?.action || 'start' } }
+      return { id, name, response: { result: 'ok', effect: effectName, action: args?.action || 'start' }, scheduling: 'SILENT' }
     }
 
     if (name === 'stop_special_effect') {
@@ -1797,11 +1833,11 @@ export class AIClient {
       } else {
         window.effectsManager?.stop?.(effectName)
       }
-      return { id, name, response: { result: 'ok', stopped: effectName } }
+      return { id, name, response: { result: 'ok', stopped: effectName }, scheduling: 'SILENT' }
     }
 
     // Default fallback
-    return { id, name, response: { result: 'ok' } }
+    return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
   }
 
   async _handleSetBackgroundImageAsync(prompt) {
@@ -1864,27 +1900,28 @@ export class AIClient {
   async _executeControlAction(id, toolName, actionFn, defaultMessage) {
     try {
       if (!actionFn) {
-        return { id, name: toolName, response: { result: defaultMessage } }
+        return { id, name: toolName, response: { result: defaultMessage }, scheduling: 'SILENT' }
       }
 
       const result = await actionFn()
       if (result && typeof result === 'object' && typeof result.error === 'string') {
-        return { id, name: toolName, response: { result: result.error } }
+        return { id, name: toolName, response: { result: result.error }, scheduling: 'SILENT' }
       }
       if (typeof result === 'string' && result.trim().length > 0) {
-        return { id, name: toolName, response: { result: result.trim() } }
+        return { id, name: toolName, response: { result: result.trim() }, scheduling: 'SILENT' }
       }
       if (result === false) {
-        return { id, name: toolName, response: { result: defaultMessage } }
+        return { id, name: toolName, response: { result: defaultMessage }, scheduling: 'SILENT' }
       }
 
-      return { id, name: toolName, response: { result: 'Done.' } }
+      return { id, name: toolName, response: { result: 'Done.' }, scheduling: 'SILENT' }
     } catch (error) {
       console.error(`${toolName} failed`, error)
       return {
         id,
         name: toolName,
         response: { result: `Action failed: ${error?.message || 'unknown error'}` },
+        scheduling: 'SILENT',
       }
     }
   }
@@ -1892,15 +1929,15 @@ export class AIClient {
   async _executeVisionCapture(id, toolName, captureFn, unavailableMessage) {
     try {
       if (!captureFn) {
-        return { id, name: toolName, response: { result: unavailableMessage } }
+        return { id, name: toolName, response: { result: unavailableMessage }, scheduling: 'SILENT' }
       }
 
       const frame = await captureFn()
       if (frame && typeof frame === 'object' && typeof frame.error === 'string') {
-        return { id, name: toolName, response: { result: frame.error } }
+        return { id, name: toolName, response: { result: frame.error }, scheduling: 'SILENT' }
       }
       if (typeof frame !== 'string' || frame.length === 0) {
-        return { id, name: toolName, response: { result: unavailableMessage } }
+        return { id, name: toolName, response: { result: unavailableMessage }, scheduling: 'SILENT' }
       }
 
       const delivered = await this._sendRealtimeImage(frame)
@@ -1909,6 +1946,7 @@ export class AIClient {
           id,
           name: toolName,
           response: { result: 'Session is reconnecting. Ask again in a moment.' },
+          scheduling: 'SILENT',
         }
       }
 
@@ -1916,6 +1954,7 @@ export class AIClient {
         id,
         name: toolName,
         response: { result: 'Image delivered. Analyze and respond now.' },
+        scheduling: 'WHEN_IDLE',
       }
     } catch (error) {
       console.error(`${toolName} failed`, error)
@@ -1923,6 +1962,7 @@ export class AIClient {
         id,
         name: toolName,
         response: { result: `Capture failed: ${error?.message || 'unknown error'}` },
+        scheduling: 'SILENT',
       }
     }
   }
@@ -2049,10 +2089,24 @@ export class AIClient {
     }
   }
 
+  async sendAudioStreamEnd() {
+    if (!this.activeSession || !this.isSessionOpen) return false
+    try {
+      await this.activeSession.sendRealtimeInput({ audioStreamEnd: true })
+      return true
+    } catch (e) {
+      console.debug('Failed to send audioStreamEnd:', e)
+      return false
+    }
+  }
+
   stopMicrophone() {
     this.isRecording = false
     this._setUserSpeakingState(false, true)
     this._resetVoiceActivityState()
+    if (this.activeSession && this.isSessionOpen) {
+      void this.sendAudioStreamEnd()
+    }
     this.mediaStream?.getTracks().forEach((t) => t.stop())
     this.mediaStream = null
     this.mediaSourceNode?.disconnect()
@@ -2224,9 +2278,7 @@ export class AIClient {
   }
 
   _getTools(animList) {
-    return [
-      {
-        functionDeclarations: [
+    const rawDeclarations = [
           {
             name: 'trigger_gesture',
             description:
@@ -2432,9 +2484,16 @@ export class AIClient {
             name: 'end_conversation',
             description: 'End the current active conversation session and disconnect the call.',
           },
-        ],
+        ];
+
+    return [
+      {
+        functionDeclarations: rawDeclarations.map((decl) => ({
+          behavior: 'NON_BLOCKING',
+          ...decl,
+        })),
       },
-      { google_search: {} },
+      { googleSearch: {} },
     ]
   }
 }
