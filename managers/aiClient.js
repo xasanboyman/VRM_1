@@ -121,7 +121,10 @@ export class AIClient {
     this.client = new GoogleGenAI({
       apiKey: apiKey || 'dummy-key-to-prevent-throw',
       apiVersion,
-      httpOptions: { apiVersion },
+      httpOptions: {
+        apiVersion,
+        headers: { 'User-Agent': 'aistudio-build' },
+      },
     })
     this.liveModel = model || 'gemini-3.8-live'
     this._loadSessionResumptionState()
@@ -135,7 +138,10 @@ export class AIClient {
     this.client = new GoogleGenAI({
       apiKey: token,
       apiVersion,
-      httpOptions: { apiVersion },
+      httpOptions: {
+        apiVersion,
+        headers: { 'User-Agent': 'aistudio-build' },
+      },
     })
   }
 
