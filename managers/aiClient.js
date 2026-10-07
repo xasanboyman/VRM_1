@@ -19,6 +19,13 @@ export function stripExpressionCommands(text) {
     .replace(/stop_special_effect\s*\{[^}]*\}/gi, '')
     .replace(/\[\s*stop_special_effect[^\]]*\]/gi, '')
     .replace(/\{[^{}]*"name"\s*:\s*"stop_special_effect"[^{}]*(\{[^{}]*\})*[^{}]*\}/gi, '')
+    .replace(/trigger_gesture\s*\([^)]*\)/gi, '')
+    .replace(/trigger_gesture\s*\{[^}]*\}/gi, '')
+    .replace(/\[\s*trigger_gesture[^\]]*\]/gi, '')
+    .replace(/modulate_voice\s*\([^)]*\)/gi, '')
+    .replace(/\*+[^*]*\*+/g, '')
+    .replace(/（[^）]*）/g, '')
+    .replace(/\([a-zA-Z\s_-]{2,30}\)/g, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
