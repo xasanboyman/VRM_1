@@ -93,7 +93,7 @@ export class AIClient {
   onUserSpeechStateChange = null
   isUserSpeaking = false
   userSpeechReleaseTimer = null
-  userSpeechReleaseMs = 700
+  userSpeechReleaseMs = 400
   lastAutoAngryAnimationAt = 0
   autoAngryAnimationCooldownMs = 5500
 
@@ -101,7 +101,7 @@ export class AIClient {
   _clientVadSpeaking = false
   _lastClientSpeechTime = 0
   _clientSpeechThreshold = 0.016
-  _clientSilenceDurationMs = 450
+  _clientSilenceDurationMs = 300
 
   // Transcription state
   currentInputTranscription = ''
@@ -434,15 +434,13 @@ export class AIClient {
     const config = {
       responseModalities: ['AUDIO'],
       enableAffectiveDialog: true,
-      enable_affective_dialog: true,
-      proactivity: { proactiveAudio: true },
       realtimeInputConfig: {
         automaticActivityDetection: {
           disabled: false,
-          startOfSpeechSensitivity: 'START_SENSITIVITY_LOW',
-          endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
+          startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
+          endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
           prefixPaddingMs: 20,
-          silenceDurationMs: 400,
+          silenceDurationMs: 250,
         },
       },
       speechConfig: {

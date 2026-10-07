@@ -201,9 +201,10 @@ export class Speech2MotionManager {
     const envWsUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_SPEECH2MOTION_WS_URL : null
     const envApiUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_SPEECH2MOTION_URL : null
 
-    const defaultHttpEndpoint = envApiUrl
-      ? `${envApiUrl.replace(/\/+$/, '')}/api/v3/speech2motion/generate`
-      : '/api/speech2motion/generate'
+    // Prefer same-origin proxy endpoint (/api/speech2motion/generate) in browsers to prevent CORS blocks
+    const defaultHttpEndpoint = (typeof window !== 'undefined')
+      ? '/api/speech2motion/generate'
+      : (envApiUrl ? `${envApiUrl.replace(/\/+$/, '')}/api/v3/speech2motion/generate` : '/api/speech2motion/generate')
     this.apiEndpoint = options.apiEndpoint || defaultHttpEndpoint
     this.avatarName = options.avatarName || 'Ani-default'
     this.enabled = options.enabled !== false
@@ -859,7 +860,9 @@ export class Speech2MotionManager {
       this._backendConsecutiveErrors = (this._backendConsecutiveErrors || 0) + 1
       this._lastBackendErrorTime = Date.now()
       const currentBackoff = this._getBackendBackoffDuration()
-      console.warn(`Speech2Motion fetch failed (backing off ${Math.round(currentBackoff / 1000)}s):`, err.message || err)
+      if (this._backendConsecutiveErrors <= 2) {
+        console.warn(`Speech2Motion offline/fallback (backing off ${Math.round(currentBackoff / 1000)}s):`, err.message || err)
+      }
       return null
     }
   }
@@ -1146,7 +1149,9 @@ export class Speech2MotionManager {
     try {
       const freshTrack = await this._fetchTrack({ isIdle: true, duration: 4.0 })
       if (!freshTrack) {
-        console.warn(`Speech2Motion: Failed to fetch fresh idle, backing off for ${Math.round(backoff / 1000)}s`)
+        if ((this._backendConsecutiveErrors || 0) <= 2) {
+          console.warn(`Speech2Motion: Failed to fetch fresh idle, backing off for ${Math.round(backoff / 1000)}s`)
+        }
         this._lastBackendErrorTime = Date.now()
         this._lastIdleRetryTime = Date.now()
         if (this.currentTrack) {

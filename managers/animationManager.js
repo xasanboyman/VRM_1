@@ -62,6 +62,64 @@ const MIXAMO_VRM_RIG_MAP = {
   mixamorigRightToeBase: 'rightToes',
 }
 
+export const LOCAL_ANIMATION_FILES = [
+  { name: 'NeutralIdle', file: 'NeutralIdle.vrma', isLoop: true, isIdle: true },
+  { name: 'HappyIdle', file: 'HappyIdle.vrma', isLoop: true, isIdle: true },
+  { name: 'Acknowledging', file: 'Acknowledging.vrma', isLoop: false },
+  { name: 'Admiration', file: 'Admiration.vrma', isLoop: false },
+  { name: 'Amusement', file: 'Amusement.vrma', isLoop: false },
+  { name: 'Angry', file: 'Angry.vrma', isLoop: false },
+  { name: 'Approval', file: 'Approval.vrma', isLoop: false },
+  { name: 'Backflip', file: 'Backflip.vrma', isLoop: false },
+  { name: 'BlowKiss', file: 'BlowKiss.vrma', isLoop: false },
+  { name: 'Bored', file: 'Bored.vrma', isLoop: false },
+  { name: 'Bow', file: 'Bow.vrma', isLoop: false },
+  { name: 'Cheering', file: 'Cheering.vrma', isLoop: false },
+  { name: 'Clapping', file: 'Clapping.vrma', isLoop: false },
+  { name: 'Confusion', file: 'Confusion.vrma', isLoop: false },
+  { name: 'Curiosity', file: 'Curiosity.vrma', isLoop: false },
+  { name: 'CutthroatGesture', file: 'CutthroatGesture.vrma', isLoop: false },
+  { name: 'Dab', file: 'Dab.vrma', isLoop: false },
+  { name: 'Disappointment', file: 'Disappointment.vrma', isLoop: false },
+  { name: 'Disgust', file: 'Disgust.vrma', isLoop: false },
+  { name: 'Embarrassment', file: 'Embarrassment.vrma', isLoop: false },
+  { name: 'Excitement', file: 'Excitement.vrma', isLoop: false },
+  { name: 'Explaining', file: 'Explaining.vrma', isLoop: false },
+  { name: 'Facepalm', file: 'Facepalm.vrma', isLoop: false },
+  { name: 'Fear', file: 'Fear.vrma', isLoop: false },
+  { name: 'GangnamStyle', file: 'GangnamStyle.vrma', isLoop: false },
+  { name: 'Gratitude', file: 'Gratitude.vrma', isLoop: false },
+  { name: 'Greeting', file: 'Greeting.vrma', isLoop: false },
+  { name: 'Grief', file: 'Grief.vrma', isLoop: false },
+  { name: 'HandsOnHips', file: 'HandsOnHips.vrma', isLoop: false },
+  { name: 'HeartFingers', file: 'HeartFingers.vrma', isLoop: false },
+  { name: 'HipHopDance', file: 'HipHopDance.vrma', isLoop: false },
+  { name: 'Joy', file: 'Joy.vrma', isLoop: false },
+  { name: 'Laughing', file: 'Laughing.vrma', isLoop: false },
+  { name: 'LookingAround', file: 'LookingAround.vrma', isLoop: false },
+  { name: 'LookingAtFingerFromBoredom', file: 'LookingAtFingerFromBoredom.vrma', isLoop: false },
+  { name: 'Love', file: 'Love.vrma', isLoop: false },
+  { name: 'MacarenaDance', file: 'MacarenaDance.vrma', isLoop: false },
+  { name: 'Nervous', file: 'Nervous.vrma', isLoop: false },
+  { name: 'Nod', file: 'Nod.vrma', isLoop: false },
+  { name: 'Pat', file: 'Pat.vrma', isLoop: false },
+  { name: 'Pointing', file: 'Pointing.vrma', isLoop: false },
+  { name: 'Pride', file: 'Pride.vrma', isLoop: false },
+  { name: 'Realization', file: 'Realization.vrma', isLoop: false },
+  { name: 'Relief', file: 'Relief.vrma', isLoop: false },
+  { name: 'Sadness', file: 'Sadness.vrma', isLoop: false },
+  { name: 'Salute', file: 'Salute.vrma', isLoop: false },
+  { name: 'ShakeHead', file: 'ShakeHead.vrma', isLoop: false },
+  { name: 'Shrugging', file: 'Shrugging.vrma', isLoop: false },
+  { name: 'Shy', file: 'Shy.vrma', isLoop: false },
+  { name: 'Sleeping', file: 'Sleeping.vrma', isLoop: false },
+  { name: 'Surprise', file: 'Surprise.vrma', isLoop: false },
+  { name: 'Taunt', file: 'Taunt Gesture.vrma', isLoop: false },
+  { name: 'Thinking', file: 'Thinking.vrma', isLoop: false },
+  { name: 'ThumbsUp', file: 'ThumbsUp.vrma', isLoop: false },
+  { name: 'Waving', file: 'Waving.vrma', isLoop: false },
+]
+
 // Safety net: maps common names the model invents to real catalog animations,
 // so a near-miss still plays something fitting instead of doing nothing.
 const ANIMATION_ALIASES = {
@@ -326,7 +384,7 @@ export class AnimationManager {
   loader
   camera = null
   currentState = 'idle'
-  mainIdle = 'Unarmed_idle01'
+  mainIdle = 'NeutralIdle'
   currentExpression = 'neutral'
   targetExpression = 'neutral'
   targetExpressionWeights = { neutral: 1 }
@@ -870,22 +928,16 @@ export class AnimationManager {
   }
 
   getAnimationCatalog() {
-    return []
+    return LOCAL_ANIMATION_FILES
   }
 
-  // Every animation the AI is allowed to trigger: mocap gesture keywords from Speech2Motion
+  // Every animation the AI is allowed to trigger: mocap gesture keywords from Speech2Motion + local VRMA catalog
   getTriggerableAnimationNames() {
-    if (this.speech2motion && this.speech2motion.enabled) {
-      return Object.keys(this.speech2motion.gestureKeywordMap)
-    }
-    return [
-      'spin', 'spin_360', 'rotate', 'twirl',
-      'shrug', 'as_you_insist', 'wave', 'greeting', 'hello',
-      'clap', 'applause', 'heart_fingers', 'love',
-      'hands_on_hips', 'sassy', 'nod', 'approval',
-      'shake_head', 'bow', 'thinking', 'thumbs_up',
-      'shy', 'jump', 'cry', 'quiet', 'cheering', 'joy'
-    ]
+    const s2mNames = (this.speech2motion && this.speech2motion.enabled)
+      ? Object.keys(this.speech2motion.gestureKeywordMap)
+      : []
+    const localNames = LOCAL_ANIMATION_FILES.map((a) => a.name.toLowerCase())
+    return Array.from(new Set([...s2mNames, ...localNames]))
   }
 
   getAnimationRepoBase() {
@@ -893,11 +945,21 @@ export class AnimationManager {
   }
 
   async loadAnimationFile(item) {
-    return null
+    if (!item) return null
+    const filename = item.file || (item.name.endsWith('.vrma') ? item.name : `${item.name}.vrma`)
+    const url = `/animations/${filename}`
+    try {
+      return await this.loadClip(item.name, url, item.isLoop)
+    } catch (err) {
+      console.warn(`Could not load animation ${item.name} from ${url}:`, err)
+      return null
+    }
   }
 
   async loadAnimationBatch(files, options = {}) {
-    return Promise.resolve()
+    if (!Array.isArray(files)) return
+    const promises = files.map((f) => this.loadAnimationFile(f))
+    await Promise.allSettled(promises)
   }
 
   startBackgroundAnimationLoad(options = {}) {
@@ -911,7 +973,7 @@ export class AnimationManager {
     if (!this.speech2motion) {
       this.speech2motion = new Speech2MotionManager(this.vrm, {
         avatarName: 'Ani-default',
-        apiUrl: 'https://xn--dr8haa.uz/oracle/',
+        apiEndpoint: '/api/speech2motion/generate',
         animationManager: this,
         audioManager: typeof window !== 'undefined' ? window.vrmAudioManager : null,
         enabled: true,
@@ -935,9 +997,19 @@ export class AnimationManager {
       }
     }
 
+    // Preload default idle animation so avatar is immediately animated and breathing
+    try {
+      await this.loadClip('NeutralIdle', '/animations/NeutralIdle.vrma', true)
+      if (this.actions['NeutralIdle']) {
+        this.play('NeutralIdle')
+      }
+    } catch (e) {
+      console.warn('Could not preload NeutralIdle:', e)
+    }
+
     onProgress?.({ current: 1, total: 1, name: 'Speech2Motion' })
     await this.speech2motion.startInfiniteMotion()
-    console.log('AnimationManager Ready: Speech2Motion infinite streaming motion online')
+    console.log('AnimationManager Ready: Speech2Motion streaming motion initialized')
   }
 
   async loadClipWithFallback(name, localPath, remoteUrl, isLoop) {
@@ -1507,15 +1579,21 @@ export class AnimationManager {
   }
 
   update(delta) {
+    const isPlayingLocalGesture = Boolean(
+      this.activeAction &&
+      this.actions[this.mainIdle] &&
+      this.activeAction !== this.actions[this.mainIdle] &&
+      this.activeAction.isRunning()
+    )
     const hasSpeech2MotionTrack = Boolean(this.speech2motion?.currentTrack)
-    const isSpeech2MotionActive = this.speech2motion && this.speech2motion.enabled && hasSpeech2MotionTrack
+    const isSpeech2MotionActive = this.speech2motion && this.speech2motion.enabled && hasSpeech2MotionTrack && !isPlayingLocalGesture
 
-    if (this.speech2motion && this.speech2motion.enabled) {
+    if (this.speech2motion && this.speech2motion.enabled && !isPlayingLocalGesture) {
       this.speech2motion.update(delta)
     }
 
-    if (!isSpeech2MotionActive) {
-      if (this.vrm && this.vrm.humanoid) {
+    if (!isSpeech2MotionActive || isPlayingLocalGesture) {
+      if (this.vrm && this.vrm.humanoid && !isPlayingLocalGesture) {
         // Reset rotations of bones that we procedurally animate to prevent accumulated rotation drift
         const proceduralBones = ['spine', 'chest', 'hips', 'head', 'neck', 'leftShoulder', 'rightShoulder']
         proceduralBones.forEach((boneName) => {
@@ -1783,117 +1861,122 @@ export class AnimationManager {
     manager.update()
   }
 
-  triggerNamedAnimation(name) {
+  async triggerNamedAnimation(name) {
     if (typeof name !== 'string' || !name.trim()) return
     const rawName = name.trim()
     const lowerName = rawName.toLowerCase().replace(/[\s-]+/g, '_')
 
     if (this.speech2motion && this.speech2motion.enabled) {
-      return this.speech2motion.triggerGesture(lowerName)
+      try {
+        const track = await this.speech2motion.triggerGesture(lowerName)
+        if (track) return track
+      } catch (err) {
+        console.warn(`Speech2Motion gesture "${lowerName}" error:`, err)
+      }
     }
 
     // Alias dictionary mapping synonyms/variations to official catalog names
     const aliasMap = {
-      wave: 'wave',
-      waving: 'wave',
-      hello: 'greeting',
-      hi: 'greeting',
-      greeting: 'greeting',
-      greet: 'greeting',
-      joy: 'joy',
-      happy: 'joy',
-      nod: 'nod',
-      yes: 'nod',
-      agree: 'nod',
-      approval: 'approval',
-      shake: 'shake_head',
-      shakehead: 'shake_head',
-      shake_head: 'shake_head',
-      no: 'shake_head',
-      disagree: 'shake_head',
-      think: 'thinking',
-      thinking: 'thinking',
-      ponder: 'thinking',
-      cheer: 'cheering',
-      cheering: 'cheering',
-      yay: 'cheering',
-      laugh: 'laugh',
-      laughing: 'laugh',
-      haha: 'laugh',
-      clap: 'clap',
-      clapping: 'clap',
-      applause: 'clap',
-      thumbsup: 'thumbs_up',
-      thumbs_up: 'thumbs_up',
-      thumb_up: 'thumbs_up',
-      shrug: 'shrug',
-      shrugging: 'shrug',
-      pointing: 'pointing',
-      point: 'pointing',
-      salute: 'salute',
-      angry: 'angry',
-      backflip: 'backflip',
-      acknowledging: 'acknowledging',
-      acknowledge: 'acknowledging',
-      blowkiss: 'blow_kiss',
-      blow_kiss: 'blow_kiss',
-      kiss: 'blow_kiss',
-      bored: 'bored',
-      lookingaround: 'looking_around',
-      looking_around: 'looking_around',
-      look_around: 'looking_around',
-      cutthroat: 'cutthroat',
-      gangnamstyle: 'gangnam_style',
-      gangnam_style: 'gangnam_style',
-      sleeping: 'sleeping',
-      sleep: 'sleeping',
-      dance: 'dance',
-      hiphop: 'dance',
-      macarena: 'Macarena_dance',
-      macarena_dance: 'Macarena_dance',
-      love: 'love',
-      gratitude: 'gratitude',
-      thank: 'gratitude',
-      thanks: 'gratitude',
-      admiration: 'admiration',
-      amusement: 'amusement',
-      excitement: 'excitement',
-      excited: 'excitement',
-      surprise: 'surprise',
-      surprised: 'surprise',
-      curiosity: 'curiosity',
-      curious: 'curiosity',
-      confusion: 'confusion',
-      confused: 'confusion',
-      pride: 'pride',
-      proud: 'pride',
-      relief: 'relief',
-      relieved: 'relief',
-      sad: 'sadness',
-      sadness: 'sadness',
-      grief: 'grief',
-      fear: 'fear',
-      scared: 'fear',
-      disgust: 'disgust',
-      embarrassment: 'embarrassment',
-      embarrassed: 'embarrassment',
-      nervous: 'nervous',
-      disappointment: 'disappointment',
-      disappointed: 'disappointment',
-      realization: 'realization',
-      pat: 'pat',
-      dab: 'dab',
-      bow: 'bow',
-      facepalm: 'facepalm',
-      explaining: 'explaining',
-      explain: 'explaining',
-      hands_on_hips: 'hands_on_hips',
-      handsonhips: 'hands_on_hips',
-      sassy: 'hands_on_hips',
-      heart: 'heart_fingers',
-      heart_fingers: 'heart_fingers',
-      shy: 'shy',
-      taunt: 'taunt',
+      wave: 'Waving',
+      waving: 'Waving',
+      hello: 'Greeting',
+      hi: 'Greeting',
+      greeting: 'Greeting',
+      greet: 'Greeting',
+      joy: 'Joy',
+      happy: 'Joy',
+      nod: 'Nod',
+      yes: 'Nod',
+      agree: 'Nod',
+      approval: 'Approval',
+      shake: 'ShakeHead',
+      shakehead: 'ShakeHead',
+      shake_head: 'ShakeHead',
+      no: 'ShakeHead',
+      disagree: 'ShakeHead',
+      think: 'Thinking',
+      thinking: 'Thinking',
+      ponder: 'Thinking',
+      cheer: 'Cheering',
+      cheering: 'Cheering',
+      yay: 'Cheering',
+      laugh: 'Laughing',
+      laughing: 'Laughing',
+      haha: 'Laughing',
+      clap: 'Clapping',
+      clapping: 'Clapping',
+      applause: 'Clapping',
+      thumbsup: 'ThumbsUp',
+      thumbs_up: 'ThumbsUp',
+      thumb_up: 'ThumbsUp',
+      shrug: 'Shrugging',
+      shrugging: 'Shrugging',
+      pointing: 'Pointing',
+      point: 'Pointing',
+      salute: 'Salute',
+      angry: 'Angry',
+      backflip: 'Backflip',
+      acknowledging: 'Acknowledging',
+      acknowledge: 'Acknowledging',
+      blowkiss: 'BlowKiss',
+      blow_kiss: 'BlowKiss',
+      kiss: 'BlowKiss',
+      bored: 'Bored',
+      lookingaround: 'LookingAround',
+      looking_around: 'LookingAround',
+      look_around: 'LookingAround',
+      cutthroat: 'CutthroatGesture',
+      gangnamstyle: 'GangnamStyle',
+      gangnam_style: 'GangnamStyle',
+      sleeping: 'Sleeping',
+      sleep: 'Sleeping',
+      dance: 'HipHopDance',
+      hiphop: 'HipHopDance',
+      macarena: 'MacarenaDance',
+      macarena_dance: 'MacarenaDance',
+      love: 'Love',
+      gratitude: 'Gratitude',
+      thank: 'Gratitude',
+      thanks: 'Gratitude',
+      admiration: 'Admiration',
+      amusement: 'Amusement',
+      excitement: 'Excitement',
+      excited: 'Excitement',
+      surprise: 'Surprise',
+      surprised: 'Surprise',
+      curiosity: 'Curiosity',
+      curious: 'Curiosity',
+      confusion: 'Confusion',
+      confused: 'Confusion',
+      pride: 'Pride',
+      proud: 'Pride',
+      relief: 'Relief',
+      relieved: 'Relief',
+      sad: 'Sadness',
+      sadness: 'Sadness',
+      grief: 'Grief',
+      fear: 'Fear',
+      scared: 'Fear',
+      disgust: 'Disgust',
+      embarrassment: 'Embarrassment',
+      embarrassed: 'Embarrassment',
+      nervous: 'Nervous',
+      disappointment: 'Disappointment',
+      disappointed: 'Disappointment',
+      realization: 'Realization',
+      pat: 'Pat',
+      dab: 'Dab',
+      bow: 'Bow',
+      facepalm: 'Facepalm',
+      explaining: 'Explaining',
+      explain: 'Explaining',
+      hands_on_hips: 'HandsOnHips',
+      handsonhips: 'HandsOnHips',
+      sassy: 'HandsOnHips',
+      heart: 'HeartFingers',
+      heart_fingers: 'HeartFingers',
+      shy: 'Shy',
+      taunt: 'Taunt',
       idle: this.mainIdle,
       neutral: this.mainIdle,
       neutralidle: this.mainIdle,
