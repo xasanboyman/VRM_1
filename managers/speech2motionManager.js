@@ -841,6 +841,7 @@ export class Speech2MotionManager {
       const response = await fetch(this.apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(1200) : undefined,
         body: JSON.stringify(payload),
       })
 

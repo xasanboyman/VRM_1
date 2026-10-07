@@ -229,10 +229,19 @@ const ANIMATION_ALIASES = {
   tired: 'bored',
   sleepy: 'sleeping',
   sleep: 'sleeping',
-  // dance
+  // dance & spin
   dancing: 'dance',
   gangnam: 'gangnam_style',
   macarena: 'Macarena_dance',
+  spin: 'macarena_dance',
+  spin_360: 'macarena_dance',
+  twirl: 'macarena_dance',
+  jump: 'excitement',
+  jumping: 'excitement',
+  bounce: 'excitement',
+  peace: 'joy',
+  peace_sign: 'joy',
+  stretch: 'looking_around',
 }
 
 // Alias and locale mapping for VRM expressions (English <-> Japanese / alternate names)
@@ -519,11 +528,10 @@ export class AnimationManager {
     const isAni = this.vrm?.meta?.name === 'Ani' || Boolean(this.vrm?.scene?.getObjectByName('Left_arm'))
 
     if (this.vrm?.humanoid) {
-      if (isLegacyVrm0 || !isAni) {
-        this.vrm.humanoid.autoUpdateHumanBones = true
-      } else {
-        this.vrm.humanoid.update = () => {}
+      if (!this._originalHumanoidUpdate && typeof this.vrm.humanoid.update === 'function') {
+        this._originalHumanoidUpdate = this.vrm.humanoid.update.bind(this.vrm.humanoid)
       }
+      this.vrm.humanoid.autoUpdateHumanBones = true
     }
 
     this._ensureLookAtProxy()
@@ -965,7 +973,27 @@ export class AnimationManager {
   }
 
   startBackgroundAnimationLoad(options = {}) {
-    return Promise.resolve()
+    if (this.backgroundLoadPromise) return this.backgroundLoadPromise
+    this.backgroundLoadPromise = (async () => {
+      // Priority conversational gestures preloaded in background for instantaneous playback
+      const priorityNames = [
+        'Salute', 'Waving', 'Joy', 'Nod', 'ShakeHead', 'Shrugging',
+        'HandsOnHips', 'MacarenaDance', 'HipHopDance', 'Cheering',
+        'Clapping', 'Bow', 'Thinking', 'ThumbsUp', 'HeartFingers',
+        'BlowKiss', 'Facepalm', 'Explaining', 'Excitement', 'Surprise',
+      ]
+      for (const name of priorityNames) {
+        if (!this.actions[name]) {
+          const item = LOCAL_ANIMATION_FILES.find((f) => f.name === name)
+          if (item) {
+            await this.loadAnimationFile(item).catch(() => {})
+            // Non-blocking spacing to keep UI rendering silky at 60fps
+            await new Promise((r) => setTimeout(r, 80))
+          }
+        }
+      }
+    })()
+    return this.backgroundLoadPromise
   }
 
   async initialize(options = {}) {
@@ -992,11 +1020,10 @@ export class AnimationManager {
     const isAni = this.vrm?.meta?.name === 'Ani' || Boolean(this.vrm?.scene?.getObjectByName('Left_arm'))
 
     if (this.vrm?.humanoid) {
-      if (isLegacyVrm0 || !isAni) {
-        this.vrm.humanoid.autoUpdateHumanBones = true
-      } else {
-        this.vrm.humanoid.update = () => {}
+      if (!this._originalHumanoidUpdate && typeof this.vrm.humanoid.update === 'function') {
+        this._originalHumanoidUpdate = this.vrm.humanoid.update.bind(this.vrm.humanoid)
       }
+      this.vrm.humanoid.autoUpdateHumanBones = true
     }
 
     // Preload default idle animation so avatar is immediately animated and breathing
@@ -1008,6 +1035,9 @@ export class AnimationManager {
     } catch (e) {
       console.warn('Could not preload NeutralIdle:', e)
     }
+
+    // Kick off non-blocking background load for common gestures
+    this.startBackgroundAnimationLoad()
 
     onProgress?.({ current: 1, total: 1, name: 'Speech2Motion' })
     await this.speech2motion.startInfiniteMotion()
@@ -1595,15 +1625,20 @@ export class AnimationManager {
     }
 
     if (!isSpeech2MotionActive || isPlayingLocalGesture) {
-      if (this.vrm && this.vrm.humanoid && !isPlayingLocalGesture) {
-        // Reset rotations of bones that we procedurally animate to prevent accumulated rotation drift
-        const proceduralBones = ['spine', 'chest', 'hips', 'head', 'neck', 'leftShoulder', 'rightShoulder']
-        proceduralBones.forEach((boneName) => {
-          const bone = this.vrm.humanoid.getNormalizedBoneNode(boneName)
-          if (bone) {
-            bone.rotation.set(0, 0, 0)
-          }
-        })
+      if (this.vrm && this.vrm.humanoid) {
+        if (this._originalHumanoidUpdate) {
+          this.vrm.humanoid.update = this._originalHumanoidUpdate
+        }
+        if (!isPlayingLocalGesture) {
+          // Reset rotations of bones that we procedurally animate to prevent accumulated rotation drift
+          const proceduralBones = ['spine', 'chest', 'hips', 'head', 'neck', 'leftShoulder', 'rightShoulder']
+          proceduralBones.forEach((boneName) => {
+            const bone = this.vrm.humanoid.getNormalizedBoneNode(boneName)
+            if (bone) {
+              bone.rotation.set(0, 0, 0)
+            }
+          })
+        }
       }
 
       // Drive crossfades + early idle-return before the mixer samples poses
@@ -1611,6 +1646,9 @@ export class AnimationManager {
       this._updateTransition(delta)
 
       if (this.mixer) this.mixer.update(delta)
+    } else if (this.vrm?.humanoid) {
+      // Speech2Motion writes directly to bone scene transforms; suppress normalized transfer to avoid fighting
+      this.vrm.humanoid.update = () => {}
     }
 
     if (this.vrm) {
@@ -1621,19 +1659,51 @@ export class AnimationManager {
         if (this._speechNodTimer === undefined) this._speechNodTimer = 0
 
         // Breathing rate smoothly adapts: slightly faster & more dynamic when talking
-        const breathSpeed = this.isSpeaking ? 2.2 : 1.4
+        const breathSpeed = this.isSpeaking ? 2.4 : 1.4
         this._breathTimer += delta * breathSpeed
         this._swayTimer += delta
 
-        // Conversational head nods & subtle tilts when speaking
+        const intensity = this.speechIntensity || 0
         const head = this.vrm.humanoid.getNormalizedBoneNode('head')
-        if (head && this.isSpeaking) {
-          this._speechNodTimer += delta * 3.4
-          // Syllable rhythm nod: dynamic emphasis pulse
-          const speechNod = Math.sin(this._speechNodTimer) * 0.016 * (0.6 + Math.sin(this._speechNodTimer * 0.4) * 0.4)
-          const speechTilt = Math.cos(this._speechNodTimer * 0.55) * 0.010
-          head.rotation.x += speechNod
-          head.rotation.z += speechTilt
+        const spine = this.vrm.humanoid.getNormalizedBoneNode('spine')
+        const chest = this.vrm.humanoid.getNormalizedBoneNode('chest')
+        const leftLowerArm = this.vrm.humanoid.getNormalizedBoneNode('leftLowerArm')
+        const rightLowerArm = this.vrm.humanoid.getNormalizedBoneNode('rightLowerArm')
+        const leftHand = this.vrm.humanoid.getNormalizedBoneNode('leftHand')
+        const rightHand = this.vrm.humanoid.getNormalizedBoneNode('rightHand')
+
+        // Real-time conversational speech prosody (synchronous with audio energy)
+        if (this.isSpeaking) {
+          this._speechNodTimer += delta * 3.6
+          // Syllable rhythm nod & tilt: dynamic emphasis pulse modulated by live speech intensity
+          const speechNod = (Math.sin(this._speechNodTimer) * 0.024 + Math.sin(this._speechNodTimer * 1.8) * 0.012) * (0.8 + intensity * 2.2)
+          const speechTilt = Math.cos(this._speechNodTimer * 0.6) * 0.018 * (0.8 + intensity * 1.5)
+          const speechTurn = Math.sin(this._speechNodTimer * 0.35) * 0.015
+
+          if (head) {
+            head.rotation.x += speechNod
+            head.rotation.y += speechTurn
+            head.rotation.z += speechTilt
+          }
+
+          // Dynamic forward lean and rhythmic spine sway during spoken utterances
+          if (spine) {
+            spine.rotation.x += THREE.MathUtils.lerp(0, 0.035, intensity) + Math.sin(this._breathTimer * 1.2) * 0.012
+            spine.rotation.y += speechTurn * 0.4
+          }
+          if (chest) {
+            chest.rotation.x += THREE.MathUtils.lerp(0, 0.022, intensity)
+            chest.rotation.z += -speechTilt * 0.3
+          }
+
+          // Subtle conversational wrist/hand beats on spoken emphasis when in idle
+          if (!isPlayingLocalGesture) {
+            const beatPulse = (Math.sin(this._speechNodTimer * 1.2) * 0.025 + 0.02) * intensity
+            if (leftLowerArm) leftLowerArm.rotation.z -= beatPulse * 0.5
+            if (rightLowerArm) rightLowerArm.rotation.z += beatPulse * 0.5
+            if (leftHand) leftHand.rotation.x += beatPulse
+            if (rightHand) rightHand.rotation.x += beatPulse
+          }
         }
 
         // 4. Dynamic emotional posture adjustments
@@ -1979,6 +2049,24 @@ export class AnimationManager {
       heart_fingers: 'HeartFingers',
       shy: 'Shy',
       taunt: 'Taunt',
+      taunt_gesture: 'Taunt',
+      spin: 'MacarenaDance',
+      spin_360: 'MacarenaDance',
+      spins: 'MacarenaDance',
+      twirl: 'MacarenaDance',
+      turn: 'MacarenaDance',
+      jump: 'Excitement',
+      jumping: 'Excitement',
+      bounce: 'Excitement',
+      bouncing: 'Excitement',
+      cry: 'Sadness',
+      crying: 'Sadness',
+      quiet: 'LookingAtFingerFromBoredom',
+      peace: 'Joy',
+      peace_sign: 'Joy',
+      v_sign: 'Joy',
+      stretch: 'LookingAround',
+      fist_bump: 'ThumbsUp',
       idle: this.mainIdle,
       neutral: this.mainIdle,
       neutralidle: this.mainIdle,

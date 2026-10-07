@@ -18,15 +18,20 @@ export class Audio2FaceManager {
   constructor(vrm, options = {}) {
     this.vrm = vrm
     const envApiUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_AUDIO2FACE_URL : null
-    const defaultEndpoint = envApiUrl
-      ? `${envApiUrl.replace(/\/+$/, '')}/api/v1/audio2face/generate`
-      : '/api/audio2face/generate'
+    // Prefer same-origin proxy endpoint (/api/audio2face/generate) in browsers to prevent CORS blocks
+    const defaultEndpoint = typeof window !== 'undefined'
+      ? '/api/audio2face/generate'
+      : (envApiUrl ? `${envApiUrl.replace(/\/+$/, '')}/api/v1/audio2face/generate` : '/api/audio2face/generate')
     this.apiEndpoint = options.apiEndpoint || defaultEndpoint
     this.profileName = options.profileName || 'Ani-default'
     this.enabled = options.enabled !== false
     this.sampleRate = options.sampleRate || 24000
     this.smoothingFactor = options.smoothingFactor || 0.65
     this.blendshapeMultiplier = options.blendshapeMultiplier || 1.15
+
+    // Circuit breaker & backoff for offline microservice
+    this._backendConsecutiveErrors = 0
+    this._lastBackendErrorTime = 0
 
     // Playback state
     this.currentTimeline = null
@@ -155,13 +160,29 @@ export class Audio2FaceManager {
     }
   }
 
+  _getBackendBackoffDuration() {
+    const errCount = this._backendConsecutiveErrors || 0
+    if (errCount <= 0) return 0
+    // Backoff ladder: 1 err -> 30s, 2 errs -> 60s, 3 errs -> 120s, 4+ errs -> 300s (5 min)
+    return Math.min(300000, 30000 * Math.pow(2, Math.min(3, errCount - 1)))
+  }
+
   /**
    * Flush all accumulated audio and trigger neural blendshape inference.
    */
   async flushPendingAudio(speechStartTime = null) {
     if (this.pendingAudioChunks.length === 0 || this.isDispatching) return
-
     this.isDispatching = true
+
+    const now = Date.now()
+    const backoff = this._getBackendBackoffDuration()
+    if (this._lastBackendErrorTime && (now - this._lastBackendErrorTime < backoff)) {
+      this.pendingAudioChunks = []
+      this.pendingAudioSamples = 0
+      this.isDispatching = false
+      return
+    }
+
     const chunks = this.pendingAudioChunks
     const totalSamples = this.pendingAudioSamples
     this.pendingAudioChunks = []
@@ -191,10 +212,11 @@ export class Audio2FaceManager {
       }
       const b64 = btoa(binary)
 
-      // Send to Audio2Face
+      // Send to Audio2Face with sub-second timeout
       const response = await fetch(this.apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(1200) : undefined,
         body: JSON.stringify({
           audio_base64: b64,
           sample_rate: this.sampleRate,
@@ -208,10 +230,15 @@ export class Audio2FaceManager {
 
       const res = await response.json()
       if (res.ok && Array.isArray(res.weights) && res.weights.length > 0) {
+        this._backendConsecutiveErrors = 0
         this._appendTimeline(res, speechStartTime)
       }
     } catch (err) {
-      console.warn('Audio2Face inference request failed:', err)
+      this._backendConsecutiveErrors = (this._backendConsecutiveErrors || 0) + 1
+      this._lastBackendErrorTime = Date.now()
+      if (this._backendConsecutiveErrors <= 2) {
+        console.warn(`Audio2Face unavailable, using formant fallback (backed off ${Math.round(this._getBackendBackoffDuration() / 1000)}s):`, err.message || err)
+      }
     } finally {
       this.isDispatching = false
     }

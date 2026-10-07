@@ -1615,7 +1615,6 @@ export class AIClient {
       for (const fc of toolCall.functionCalls) {
         if (fc.id && this.handledToolCallIds.has(fc.id)) {
           console.log(`⏩ Skipping duplicate toolCall id: ${fc.id} (${fc.name})`)
-          functionResponses.push({ id: fc.id, name: fc.name, response: { result: 'ok' } })
           continue
         }
         if (fc.id) {
