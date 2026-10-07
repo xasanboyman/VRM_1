@@ -441,7 +441,6 @@ export class AIClient {
 
     const config = {
       responseModalities: ['AUDIO'],
-      enableAffectiveDialog: true,
       realtimeInputConfig: {
         automaticActivityDetection: {
           disabled: false,
