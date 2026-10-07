@@ -28,7 +28,8 @@ export class AudioManager {
     oh: 0,
     ou: 0,
   }
-  mouthOpenValue = 0 // Aggregate mouth opening for backwards compatibility
+  // Pitch modulation in cents (-1200 to +1200, 100 cents = 1 semitone)
+  pitchShiftCents = (typeof localStorage !== 'undefined' ? Number(localStorage.getItem('vrm_pitch_shift_cents')) : 0) || 0
 
   timeDomainDataArray = null
   frequencyDataArray = null
@@ -107,6 +108,11 @@ export class AudioManager {
 
     const source = this.audioCtx.createBufferSource()
     source.buffer = audioBuffer
+    if (this.pitchShiftCents) {
+      try {
+        source.detune.value = this.pitchShiftCents
+      } catch {}
+    }
     source.connect(this.analyser)
 
     const now = this.audioCtx.currentTime
@@ -163,6 +169,20 @@ export class AudioManager {
     })
   }
 
+  setPitchShiftCents(cents) {
+    this.pitchShiftCents = Math.max(-1200, Math.min(1200, Number(cents) || 0))
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('vrm_pitch_shift_cents', String(this.pitchShiftCents))
+      } catch {}
+    }
+    for (const src of this.activeSources) {
+      try {
+        src.detune.value = this.pitchShiftCents
+      } catch {}
+    }
+  }
+
   async playChunk(int16Data, vrm = null) {
     if (this.isUserSpeaking) return
     if (!this.audioCtx) await this.initialize()
@@ -187,11 +207,17 @@ export class AudioManager {
 
     const source = this.audioCtx.createBufferSource()
     source.buffer = audioBuffer
+    if (this.pitchShiftCents) {
+      try {
+        source.detune.value = this.pitchShiftCents
+      } catch {}
+    }
     source.connect(this.analyser)
 
     const now = this.audioCtx.currentTime
+    // Ultra-low latency scheduling: 35ms lookahead on initial chunk, seamless back-to-back afterwards
     if (this.nextStartTime < now) {
-      this.nextStartTime = now + 0.05
+      this.nextStartTime = now + 0.035
       this.speechStartTime = this.nextStartTime
       this.totalScheduledDuration = 0
     }
@@ -203,6 +229,11 @@ export class AudioManager {
     this.activeSources.push(source)
     source.onended = () => {
       this.activeSources = this.activeSources.filter((s) => s !== source)
+      const hasPendingScheduled = this.audioCtx && (this.nextStartTime > (this.audioCtx.currentTime + 0.04))
+      if (this.activeSources.length === 0 && !hasPendingScheduled) {
+        this.setPlaybackState(false)
+        this.stopMouthSync(this.currentVrm)
+      }
     }
 
     if (this.currentVrm && !this.mouthRaf) this.startMouthSync(this.currentVrm)

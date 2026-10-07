@@ -105,6 +105,8 @@
         v-model:selectedLanguage="selectedLanguage"
         :selectedVoice="selectedVoice"
         @update:selectedVoice="handleVoiceChange"
+        :pitchShiftCents="pitchShiftCents"
+        @update:pitchShiftCents="handlePitchShiftChange"
         :language="selectedLanguage"
         :languageOptions="languageOptions"
         :availableModels="availableModels"
@@ -321,6 +323,9 @@ const lookAtUserEnabled = ref(localStorage.getItem('vrm_look_at_user') !== 'fals
 const lookAtScreenEnabled = ref(localStorage.getItem('vrm_look_at_screen') !== 'false')
 const selectedLanguage = ref(resolveLanguage(localStorage.getItem(UI_LANGUAGE_STORAGE_KEY) || 'en'))
 const selectedVoice = ref(localStorage.getItem('vrm_selected_voice') || 'Zephyr')
+const pitchShiftCents = ref(
+  (typeof localStorage !== 'undefined' ? Number(localStorage.getItem('vrm_pitch_shift_cents')) : 0) || 0,
+)
 const t = (key, params = {}) => translateUi(selectedLanguage.value, key, params)
 const languageLabelKeyByCode = Object.freeze({
   en: 'aiLanguage.english',
@@ -852,6 +857,14 @@ const handleVoiceChange = async (voiceName) => {
   }
 }
 
+const handlePitchShiftChange = (cents) => {
+  const num = Math.max(-1200, Math.min(1200, Math.round(Number(cents) || 0)))
+  pitchShiftCents.value = num
+  if (system.value?.audioManager?.setPitchShiftCents) {
+    system.value.audioManager.setPitchShiftCents(num)
+  }
+}
+
 watch(
   chatHistory,
   (val) => {
@@ -1265,6 +1278,9 @@ onMounted(async () => {
       user: lookAtUserEnabled.value,
       screen: lookAtScreenEnabled.value,
     })
+    if (sys.audioManager?.setPitchShiftCents) {
+      sys.audioManager.setPitchShiftCents(pitchShiftCents.value)
+    }
 
     sys.visionManager.onStateChange = (isActive) => {
       isSharingScreen.value = isActive

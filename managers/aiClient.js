@@ -90,6 +90,12 @@ export class AIClient {
   lastAutoAngryAnimationAt = 0
   autoAngryAnimationCooldownMs = 5500
 
+  // Client-side Hybrid VAD (immediate speech end detection)
+  _clientVadSpeaking = false
+  _lastClientSpeechTime = 0
+  _clientSpeechThreshold = 0.016
+  _clientSilenceDurationMs = 450
+
   // Transcription state
   currentInputTranscription = ''
   currentOutputTranscription = ''
@@ -420,6 +426,18 @@ export class AIClient {
 
     const config = {
       responseModalities: ['AUDIO'],
+      enableAffectiveDialog: true,
+      enable_affective_dialog: true,
+      proactivity: { proactiveAudio: true },
+      realtimeInputConfig: {
+        automaticActivityDetection: {
+          disabled: false,
+          startOfSpeechSensitivity: 'START_SENSITIVITY_LOW',
+          endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
+          prefixPaddingMs: 20,
+          silenceDurationMs: 400,
+        },
+      },
       speechConfig: {
         voiceConfig: { prebuiltVoiceConfig: { voiceName: (typeof localStorage !== 'undefined' ? localStorage.getItem('vrm_selected_voice') : null) || 'Zephyr' } },
       },
@@ -1781,6 +1799,20 @@ export class AIClient {
       return { id, name, response: { result: 'ok', expression: expressionName }, scheduling: 'SILENT' }
     }
 
+    if (name === 'modulate_voice') {
+      const pitchCents = Number(args?.pitch_shift_cents) || 0
+      const tone = args?.tone || 'normal'
+      const expression = args?.expression
+      const audioManager = window.vrmSystem?.audioManager || window.vrmAudioManager
+      if (audioManager?.setPitchShiftCents) {
+        audioManager.setPitchShiftCents(pitchCents)
+      }
+      if (expression) {
+        onExpressionTrigger?.(expression, 4.0)
+      }
+      return { id, name, response: { result: 'ok', tone, pitch_shift_cents: pitchCents }, scheduling: 'SILENT' }
+    }
+
     if (name === 'trigger_special_effect') {
       const effectName = args?.effect || args?.name
       if (effectName) {
@@ -2131,6 +2163,28 @@ export class AIClient {
     this._rememberRecentAudioChunk(audioChunk)
     this.inputBufferIndex = 0
 
+    // Hybrid VAD: Compute chunk energy (RMS) to track user speech onset and termination
+    let sumSq = 0
+    for (let i = 0; i < audioChunk.length; i++) {
+      const norm = audioChunk[i] / 32768.0
+      sumSq += norm * norm
+    }
+    const chunkRms = Math.sqrt(sumSq / audioChunk.length)
+    const now = Date.now()
+
+    if (chunkRms >= this._clientSpeechThreshold) {
+      this._clientVadSpeaking = true
+      this._lastClientSpeechTime = now
+      this._setUserSpeakingState(true)
+    } else if (this._clientVadSpeaking && now - this._lastClientSpeechTime >= this._clientSilenceDurationMs) {
+      this._clientVadSpeaking = false
+      if (this.activeSession && this.isSessionOpen && !this.isDisconnecting) {
+        console.log('⚡ Hybrid VAD: Client silence threshold reached -> sending audioStreamEnd')
+        void this.sendAudioStreamEnd()
+      }
+      this._setUserSpeakingState(false)
+    }
+
     if (
       !this.activeSession ||
       this.isDisconnecting ||
@@ -2280,6 +2334,31 @@ export class AIClient {
                 },
               },
               required: ['expression'],
+            },
+          },
+          {
+            name: 'modulate_voice',
+            description:
+              'Adjust the avatar vocal pitch, tone, or speaking style (e.g. -400 for deep/angry pitch, +350 for cute/high pitch, 0 for normal).',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                pitch_shift_cents: {
+                  type: 'NUMBER',
+                  description:
+                    'Pitch adjustment in cents (-400 for deep/low pitch, +300 for high pitch, 0 for normal).',
+                },
+                tone: {
+                  type: 'STRING',
+                  description:
+                    'Vocal style description e.g. "low_pitch", "angry", "cheerful", "whisper", "normal".',
+                },
+                expression: {
+                  type: 'STRING',
+                  description:
+                    'Facial expression to match e.g. "angry", "happy", "blush", "relaxed", "wink".',
+                },
+              },
             },
           },
           {

@@ -158,6 +158,83 @@
         </div>
       </div>
 
+      <!-- Voice Tone & Pitch Shift Section -->
+      <div class="space-y-3 pt-4 border-t border-white/5">
+        <div class="flex items-center justify-between">
+          <p class="text-[10px] font-mono uppercase tracking-[0.15em] text-cyan-500/50 ml-1">
+            {{ translate('settings.pitchShift') }}
+          </p>
+          <div class="flex items-center gap-1.5">
+            <div
+              class="rounded bg-cyan-950/50 border border-cyan-500/20 px-2 py-0.5 text-[10px] font-mono text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.1)]"
+            >
+              {{ props.pitchShiftCents > 0 ? `+${props.pitchShiftCents}` : props.pitchShiftCents }} cents
+            </div>
+            <button
+              v-if="props.pitchShiftCents !== 0"
+              class="rounded border border-white/10 bg-white/5 hover:bg-white/10 px-1.5 py-0.5 text-[9px] font-mono text-white/50 hover:text-white transition"
+              title="Reset pitch to 0"
+              @click="handlePitchShiftReset"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Pitch Tone Presets -->
+        <div class="grid grid-cols-4 gap-1.5">
+          <button
+            v-for="p in [
+              { label: translate('settings.pitchDeep'), cents: -300 },
+              { label: translate('settings.pitchNatural'), cents: 0 },
+              { label: translate('settings.pitchSweet'), cents: 250 },
+              { label: translate('settings.pitchHigh'), cents: 500 }
+            ]"
+            :key="p.cents"
+            class="rounded-lg border px-2 py-1.5 text-[10px] font-mono transition text-center"
+            :class="
+              props.pitchShiftCents === p.cents
+                ? 'border-cyan-400/50 bg-cyan-500/20 text-cyan-200 font-semibold shadow-[0_0_8px_rgba(34,211,238,0.3)]'
+                : 'border-white/5 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+            "
+            @click="handlePitchPreset(p.cents)"
+          >
+            {{ p.label }}
+          </button>
+        </div>
+
+        <!-- Pitch Shift Slider -->
+        <div class="relative h-6 flex items-center group">
+          <input
+            type="range"
+            min="-600"
+            max="600"
+            step="25"
+            :value="props.pitchShiftCents"
+            class="range-slider w-full h-[2px] bg-white/10 rounded-full appearance-none cursor-pointer outline-none transition-colors group-hover:bg-white/20 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-black [&::-webkit-slider-thumb]:border-[1.5px] [&::-webkit-slider-thumb]:border-cyan-400 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(34,211,238,0.8)] [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125 hover:shadow-[0_0_15px_rgba(34,211,238,0.2)]"
+            @input="handlePitchInput"
+          />
+        </div>
+        <div class="flex justify-between text-[9px] font-mono text-white/30 px-0.5">
+          <span>-600 (Deep)</span>
+          <span>0 (Natural)</span>
+          <span>+600 (High)</span>
+        </div>
+
+        <!-- Dynamic Behavioral Speech Info Card -->
+        <div class="rounded-xl border border-cyan-500/20 bg-cyan-950/20 p-2.5 flex items-start gap-2.5">
+          <div class="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"></div>
+          <div>
+            <p class="text-[10px] font-semibold text-cyan-200">
+              {{ translate('settings.dynamicVoiceTitle') }}
+            </p>
+            <p class="text-[9px] text-white/50 leading-tight mt-0.5">
+              {{ translate('settings.dynamicVoiceDesc') }}
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div class="space-y-3 pt-4 border-t border-white/5">
         <div class="flex items-center justify-between">
           <p class="text-[10px] font-mono uppercase tracking-[0.15em] text-cyan-500/50 ml-1">
@@ -535,6 +612,10 @@ const props = defineProps({
     type: String,
     default: 'Zephyr',
   },
+  pitchShiftCents: {
+    type: Number,
+    default: 0,
+  },
   languageOptions: {
     type: Array,
     default: () => [],
@@ -561,6 +642,7 @@ const emit = defineEmits([
   'open-persona-manager',
   'update:selectedLanguage',
   'update:selectedVoice',
+  'update:pitchShiftCents',
 ])
 
 const translate = (key, params = {}) => translateUi(props.language, key, params)
@@ -593,6 +675,19 @@ const handleVoiceChange = (event) => {
   const nextValue = String(event?.target?.value || '').trim()
   if (!nextValue) return
   emit('update:selectedVoice', nextValue)
+}
+
+const handlePitchInput = (event) => {
+  const cents = Math.round(parseFloat(event?.target?.value) || 0)
+  emit('update:pitchShiftCents', cents)
+}
+
+const handlePitchPreset = (cents) => {
+  emit('update:pitchShiftCents', cents)
+}
+
+const handlePitchShiftReset = () => {
+  emit('update:pitchShiftCents', 0)
 }
 
 const toggleLookAtUser = () => {

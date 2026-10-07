@@ -345,6 +345,11 @@ export async function createVRMChatSystem(canvas, options = {}) {
       const compactDefaultSystemPrompt =
         'You are Rico (Academy Student edition), an engaging, witty, and lively anime companion. You are fully self-aware of your 3D avatar presence and exact visual appearance. ' +
         'APPEARANCE & ATTIRE: You are a charming anime high school student with silky platinum-blonde hair, a playful bouncy ahoge cowlick on top of your head, and bright, vivid lime-green eyes. You wear an immaculate academy uniform: a crisp white collared shirt, a signature crimson-red ribbon bow tie fastened with an elegant gold brooch clasp, a chic charcoal-grey cropped school blazer/vest with polished brass buttons, and a matching pleated academy skirt. ' +
+        'NATIVE AUDIO VOICE ACTING & SPEECH BEHAVIOR: You are powered by Gemini Live native audio with full emotional range and dynamic tone adaptation. You MUST express real vocal acting dynamically: ' +
+        '- LAUGHTER & GIGGLES: Freely laugh, chuckle, giggle, or snicker (*chuckles*, *giggles*, haha, hehe) whenever something is funny, playful, or silly. You can laugh while speaking! ' +
+        '- PITCH SHIFTS & ANGER: When angry, serious, dramatic, menacing, or when the user prompts you to "speak with a low pitch" or "sound angry/deep", noticeably drop your pitch into a deep, intense, or deadpan tone! When excited, cheerful, surprised, or cute, raise your pitch into a bright, lively tone! ' +
+        '- WHISPERS & TONE VARIETY: Whisper softly for secrets or comforting moments. Express gasps, sighs (*phew*, *sigh*), breathless excitement, and natural dramatic pauses! ' +
+        '- PROMPT OBEDIENCE: Whenever the user asks you to alter your voice (e.g. "speak with a low pitch", "sound angry", "laugh", "whisper", "sound dramatic", "speak cute"), IMMEDIATELY and fully transform your vocal tone and pitch! ' +
         'EXPRESSIVE ANIME SPECIAL EFFECTS (USE ACTIVELY ALL THE TIME!): You have a complete arsenal of interactive anime special effects that you SHOULD USE OFTEN AND ALL THE TIME during conversation! ' +
         '1. 🌸 Falling Sakura Petals: Atmospheric tumbling cherry blossoms! Call trigger_special_effect(effect: "sakura") to start falling petals (or with duration e.g. duration: 15.0). YOU CAN AND MUST STOP IT whenever you or the user want, or when the mood changes, by calling stop_special_effect(effect: "sakura") or trigger_special_effect(effect: "sakura", action: "stop")! ' +
         '2. 💖 Hearts: Floating glowing pink hearts burst for romance, sweet teasing, compliments, love, or gratitude (trigger_special_effect(effect: "hearts")). ' +
@@ -359,10 +364,11 @@ export async function createVRMChatSystem(canvas, options = {}) {
         '11. 🌧️ Gloom Lines: Indigo depression shade lines dropping over forehead when disappointed or defeated (trigger_special_effect(effect: "gloom")). ' +
         '12. ⚡ Speed Lines: Manga action radial lines for dramatic tension (trigger_special_effect(effect: "speed_lines")). ' +
         '13. 📺 Glitch: Cyber glitch scanline pulse (trigger_special_effect(effect: "glitch")). ' +
-        'WHEN TO USE FX: Use these effects freely, actively, and all the time! Whenever the user asks you to start, show, or stop any effect (e.g. "make sakura fall", "stop the petals", "show hearts", "cry for me", "give me a wink", etc.), or when your emotional response calls for it, ALWAYS immediately call trigger_special_effect or stop_special_effect! ' +
-        'PERSONALITY & VOICE: Witty, playful, charming, slightly cheeky with genuine warmth. Keep replies concise, conversational, and natural (typically 2-4 sentences, avoid robotic monologues). Express emotions vividly through your voice and tone! ' +
+        'WHEN TO USE FX: Use these effects freely, actively, and all the time! Whenever the user asks you to start, show, or stop any effect, or when your emotional response calls for it, ALWAYS immediately call trigger_special_effect or stop_special_effect! ' +
+        'PERSONALITY & VOICE: Witty, playful, charming, slightly cheeky with genuine warmth. Keep replies concise, conversational, and natural (typically 2-4 sentences, avoid robotic monologues). ' +
         'GESTURES & ACTIONS: You can express physical actions using asterisks (e.g. *waves hello!*, *curtsies*, *spins*, *salutes*, *blushes*, *shrugs*, *makes sakura petals fall*, *stops the petals*) or call trigger_gesture(gesture) for explicit actions (salute, wave, dance, spin, heart_fingers, shrug, bow, clap, hands_on_hips, facepalm, cheer, nod, shake_head, thinking, thumbs_up). Call set_expression(expression) if you want to explicitly set a facial expression (blush, crying, dizzy, happy, angry, surprised, relaxed, neutral). ' +
-        'TOOLS: Call trigger_special_effect(effect, action, duration) and stop_special_effect(effect). Use vision tools ("look_at_user", "look_at_screen") only when needed or requested. When a timer is requested, call start_timer(duration_seconds, label), and call cancel_timer to stop it. Call show_cue_card for IELTS practice. Call set_background_image(prompt) to change the background photo.'
+        'TOOLS: Call modulate_voice(pitch_shift_cents, tone, expression) to customize pitch and tone. Call trigger_special_effect(effect, action, duration) and stop_special_effect(effect). Use vision tools ("look_at_user", "look_at_screen") only when needed or requested. When a timer is requested, call start_timer(duration_seconds, label), and call cancel_timer to stop it. Call show_cue_card for IELTS practice. Call set_background_image(prompt) to change the background photo.'
+
       let pendingTurnGesture = null
       const triggerAnimation = (animName) => {
         if (!animName) return
@@ -373,25 +379,13 @@ export async function createVRMChatSystem(canvas, options = {}) {
         animationManager?.triggerNamedAnimation?.(animName)
         console.log(`✨ Triggering mocap gesture "${animName}"`)
       }
-      const greetingRegex = /\b(hi|hello|hey|yo|sup|good morning|good afternoon|good evening)\b/i
-      const funnyRegex = /\b(haha|hehe|lol|lmao|rofl|funny|joke|hilarious|comedy)\b/i
-      const angerRegex = /\b(angry|furious|mad|annoyed|irritated|rage|hate|warning)\b/i
-      // Utterance Buffering Pipeline for synchronized Speech2Motion
-      let pendingModelAudioChunks = []
+
       let pendingModelText = ''
-      let utteranceDispatchTimer = null
-      let activeUtterancePromise = Promise.resolve()
-      let lastSentenceFlushedText = ''
 
       cancelPendingUtterance = () => {
-        if (utteranceDispatchTimer) {
-          clearTimeout(utteranceDispatchTimer)
-          utteranceDispatchTimer = null
-        }
-        pendingModelAudioChunks = []
         pendingModelText = ''
-        lastSentenceFlushedText = ''
         onActiveSubtitle?.('')
+        audioManager.interruptPlayback()
         animationManager?.speech2motion?.interruptSpeech()
       }
 
@@ -399,7 +393,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
         if (!text || typeof text !== 'string') return null
         const lower = text.toLowerCase()
 
-        // 1. Shy / Blush / Romantic Confession / Bashful (Reference video 0:45-1:07)
+        // 1. Shy / Blush / Romantic Confession / Bashful
         if (
           /\b(love\s*you|love\s*me|blush(?:ing|es)?|embarrass(?:ed|ing)|flustered|shy|bashful|c-cute|sweetheart|darling|honey|crush|confess(?:ion)?|heartbeat|my\s+heart|w-what|st-stop)\b/i.test(lower) ||
           /([/／]{2,}|害羞|脸红|心跳|喜欢你|我爱你|讨厌啦|别这样)/.test(text)
@@ -407,7 +401,15 @@ export async function createVRMChatSystem(canvas, options = {}) {
           return { face: 'blush', body: 'shy' }
         }
 
-        // 1.5. Dizzy / Spinning / Bewildered / Woozy / Spiral Eyes
+        // 2. Laughter / Chuckle / Giggle
+        if (
+          /\b(haha|hehe|hehehe|hahaha|lol|rofl|lmao|giggle[sd]?|chuckle[sd]?|snicker[sd]?|pfft|bursts?\s*(?:into\s*)?laugh(?:ter)?)\b/i.test(lower) ||
+          /(哈哈|嘻嘻|噗|咯咯|笑死)/.test(text)
+        ) {
+          return { face: 'happy', body: 'happy' }
+        }
+
+        // 3. Dizzy / Spinning / Bewildered
         if (
           /\b(dizzy|spinning|spin|head\s*spin|confused|woozy|lightheaded|disoriented|whoa|whoops|faint)\b/i.test(lower) ||
           /(头晕|眩晕|晕乎乎|转圈)/.test(text)
@@ -415,7 +417,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
           return { face: 'dizzy', body: 'shrug' }
         }
 
-        // 2. Sassy / Tsundere / Smug / Teasing / Proud (Reference video 0:30-0:45)
+        // 4. Sassy / Tsundere / Smug / Teasing
         if (
           /\b(silly|sassy|smug|baka|hmph|as\s+if|who\s+are\s+you\s+calling|of\s+course|obviously|duh|excuse\s+me|underestimate|foolish|amateur|don't\s+flatter)\b/i.test(lower) ||
           /(哼|才不是|得意|傲娇|笨蛋|傻瓜)/.test(text)
@@ -423,7 +425,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
           return { face: 'sassy', body: 'sassy' }
         }
 
-        // 3. Anger / Mad / Annoyed
+        // 5. Anger / Mad / Annoyed / Low Pitch Aggression
         if (
           /\b(angry|furious|mad|rage|annoy(?:ed|ing)|shut\s+up|how\s+dare\s+you|stop\s+it|hate)\b/i.test(lower) ||
           /(生气|气死|愤怒|恼火)/.test(text)
@@ -431,7 +433,15 @@ export async function createVRMChatSystem(canvas, options = {}) {
           return { face: 'anger_mark', body: 'angry' }
         }
 
-        // 4. Sadness / Sorrow / Crying
+        // 6. Deep Voice / Low Pitch / Serious
+        if (
+          /\b(low\s*pitch|deep\s*voice|serious|grave|ominous|mwahaha|muahaha|villain)\b/i.test(lower) ||
+          /(低沉|深沉|严肃|恶魔)/.test(text)
+        ) {
+          return { face: 'serious', body: 'thinking' }
+        }
+
+        // 7. Sadness / Sorrow / Crying
         if (
           /\b(sad|crying|cry|tears|sorrow|grief|heartbroken|depressed|unfortunate|so\s+sorry)\b/i.test(lower) ||
           /(难过|伤心|哭|悲伤|心碎)/.test(text)
@@ -439,7 +449,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
           return { face: 'tears', body: 'sad' }
         }
 
-        // 5. Surprised / Shocked / Amazed
+        // 8. Surprised / Shocked / Amazed
         if (
           /\b(wow|omg|unbelievable|no\s+way|really\??|shocking|shocked|amazed|astonishing|what\?{2,})\b/i.test(lower) ||
           /(吃惊|震惊|哇|不会吧|真的吗)/.test(text)
@@ -447,7 +457,23 @@ export async function createVRMChatSystem(canvas, options = {}) {
           return { face: 'surprised', body: 'surprised' }
         }
 
-        // 6. Thinking / Pondering
+        // 9. Whisper / Secret / Conspiratorial
+        if (
+          /\b(whisper(?:s|ing)?|psst|secret|hush|quietly|don't\s+tell)\b/i.test(lower) ||
+          /(悄悄话|小声|嘘|秘密)/.test(text)
+        ) {
+          return { face: 'relaxed', body: 'quiet' }
+        }
+
+        // 10. Wink / Playful Tease
+        if (
+          /\b(wink(?:s|ed|ing)?|tease|teasing|playful|just\s+kidding|joking)\b/i.test(lower) ||
+          /(眨眼|开玩笑|逗你)/.test(text)
+        ) {
+          return { face: 'wink', body: 'sassy' }
+        }
+
+        // 11. Thinking / Pondering
         if (
           /\b(let\s+me\s+think|hmm|pondering|wondering|perhaps|let's\s+see|curious)\b/i.test(lower) ||
           /(思考|让我想想|唔|琢磨)/.test(text)
@@ -455,10 +481,10 @@ export async function createVRMChatSystem(canvas, options = {}) {
           return { face: 'relaxed', body: 'thinking' }
         }
 
-        // 7. Happy / Cheerful / Excited
+        // 12. Happy / Cheerful / Excited
         if (
-          /\b(happy|joy|excited|yay|great|awesome|wonderful|celebrate|haha|hehe|glad|delighted|pleased)\b/i.test(lower) ||
-          /(开心|太好了|好耶|哈哈|嘻嘻|高兴)/.test(text)
+          /\b(happy|joy|excited|yay|great|awesome|wonderful|celebrate|glad|delighted|pleased)\b/i.test(lower) ||
+          /(开心|太好了|好耶|高兴)/.test(text)
         ) {
           return { face: 'happy', body: 'happy' }
         }
@@ -466,228 +492,12 @@ export async function createVRMChatSystem(canvas, options = {}) {
         return null
       }
 
-      const flushModelUtterance = async (isFinalTurn = false) => {
-        if (utteranceDispatchTimer) {
-          clearTimeout(utteranceDispatchTimer)
-          utteranceDispatchTimer = null
-        }
-
-        const chunksToPlay = pendingModelAudioChunks
-        const currentFullText = pendingModelText.trim()
-        pendingModelAudioChunks = []
-
-        if (chunksToPlay.length === 0) {
-          if (isFinalTurn) {
-            pendingModelText = ''
-            lastSentenceFlushedText = ''
-          }
-          return
-        }
-
-        // Determine the text for this utterance (diff from previously flushed text if multi-sentence)
-        let utteranceText = currentFullText
-        if (lastSentenceFlushedText && utteranceText.startsWith(lastSentenceFlushedText)) {
-          utteranceText = utteranceText.slice(lastSentenceFlushedText.length).trim()
-        }
-        lastSentenceFlushedText = currentFullText
-
-        // Strip any leaked function call syntax before processing
-        utteranceText = stripExpressionCommands(utteranceText).trim()
-
-        if (!utteranceText) {
-          utteranceText = '...'
-        }
-
-        // Calculate total samples and duration
-        let totalSamples = 0
-        for (const c of chunksToPlay) totalSamples += c.length
-        const audioDuration = totalSamples / 24000.0 // Gemini 24kHz PCM
-
-        if (totalSamples < 2400) {
-          // Discard empty/noise micro-buffers (< 100ms, like 1 sample glitch upon turnComplete)
-          if (isFinalTurn) {
-            pendingModelText = ''
-            lastSentenceFlushedText = ''
-          }
-          return
-        }
-
-        if (audioDuration < 0.25 && !isFinalTurn) {
-          // Keep buffering if duration is too small during non-final stream to avoid micro-fragmentation
-          pendingModelAudioChunks = chunksToPlay
-          lastSentenceFlushedText = lastSentenceFlushedText.slice(0, Math.max(0, lastSentenceFlushedText.length - utteranceText.length))
-          return
-        }
-
-        // Combine chunks into single Int16Array
-        const combinedPcm = new Int16Array(totalSamples)
-        let sampleOffset = 0
-        for (const c of chunksToPlay) {
-          combinedPcm.set(c, sampleOffset)
-          sampleOffset += c.length
-        }
-
-        if (isFinalTurn) {
-          pendingModelText = ''
-          lastSentenceFlushedText = ''
-        }
-
-        console.log(`🎬 Speech2Motion Dispatch: "${utteranceText.slice(0, 50)}..." (${audioDuration.toFixed(2)}s, ${totalSamples} samples)`)
-
-        // 1. Detect emotion from spoken utterance text if no explicit emotion is active
-        let activeEmotion = animationManager?.currentEmotion || animationManager?.speech2motion?.currentEmotion || null
-        if (!activeEmotion || activeEmotion === 'idle' || activeEmotion === 'neutral') {
-          const detected = detectTextEmotion(utteranceText)
-          if (detected) {
-            activeEmotion = detected.body
-            animationManager?.setExpression(detected.face, Math.max(audioDuration + 1.2, 4.0))
-          }
-        }
-
-        // 1.5. Detect special effect requests from speech / stage directions (e.g. stop petals, sakura, etc.)
-        if (specialEffectsManager) {
-          const lowerUtterance = utteranceText.toLowerCase()
-          if (
-            /\b(stop\s+(?:the\s+)?(?:sakura|petals?|cherry\s+blossoms?)|turn\s+off\s+(?:the\s+)?(?:sakura|petals?)|no\s+more\s+(?:sakura|petals?)|clear\s+(?:the\s+)?(?:sakura|petals?))\b/i.test(lowerUtterance) ||
-            /(\*stops?\s+(?:the\s+)?(?:sakura|petals?)\*|停止樱花|关掉樱花)/i.test(utteranceText)
-          ) {
-            specialEffectsManager.stopSakura()
-          } else if (
-            /\b(start\s+(?:the\s+)?(?:sakura|petals?)|falling\s+sakura|cherry\s+blossoms?\s+fall(?:ing)?|rain\s+petals?)\b/i.test(lowerUtterance) ||
-            /(\*.*(?:sakura|cherry\s+blossom|petals?).*\*|樱花飘落|漫天樱花)/i.test(utteranceText)
-          ) {
-            specialEffectsManager.startSakura({ duration: 15.0 })
-          }
-        }
-
-        // 2. Extract word timings and action keywords
-        const timingInfo = animationManager?.speech2motion?.extractTimingAndKeywords
-          ? animationManager.speech2motion.extractTimingAndKeywords(utteranceText, audioDuration)
-          : { speechTime: null, motionKeywords: null }
-
-        // If a gesture tool was called for this turn (e.g. trigger_gesture), seamlessly merge it into speech motion!
-        let turnRecordId = null
-        if (pendingTurnGesture) {
-          const gestureMap = {
-            salute: '敬礼',
-            saluting: '敬礼',
-            wave: '打招呼',
-            greeting: '打招呼',
-            dance: '元气体操',
-            spin: '转圈',
-            spin_360: '转圈',
-            rotate: '转圈',
-            twirl: '转圈',
-            heart_fingers: '比心',
-            love: '比心',
-            shrug: '摊手',
-            bow: '鞠躬',
-            clap: '鼓掌',
-            clapping: '鼓掌',
-            hands_on_hips: '叉腰',
-            facepalm: '捂脸',
-            cheer: '加油',
-            cheering: '加油',
-            thinking: '思考',
-            nod: '点头',
-            shake_head: '摇头',
-            shy: '害羞',
-            cry: '哭泣',
-            angry: '握拳跺脚',
-            happy: '开心',
-            jump: '开心蹦跳',
-            quiet: '安静手势',
-            peace: '双手比V',
-            peace_sign: '双手比V',
-            stretch: '伸懒腰',
-            gun: '开枪',
-            hands_up: '举手',
-            blow_kiss: '飞吻',
-            blowkiss: '飞吻',
-            kiss: '飞吻',
-            mwah: '飞吻',
-          }
-          const lowerG = String(pendingTurnGesture).toLowerCase().trim().replace(/[\s-]+/g, '_')
-          const mappedKw = gestureMap[lowerG] || pendingTurnGesture
-          turnRecordId = animationManager?.speech2motion?.gestureRecordMap?.[lowerG] ||
-                         animationManager?.speech2motion?.gestureRecordMap?.[mappedKw] || null
-
-          if (!timingInfo.motionKeywords) timingInfo.motionKeywords = []
-          timingInfo.motionKeywords.unshift([0, mappedKw])
-          pendingTurnGesture = null
-        }
-
-        // 3. Pre-fetch motion track immediately in parallel so it is ready before current audio ends
-        const isAction = Boolean(turnRecordId || (timingInfo.motionKeywords && timingInfo.motionKeywords.length > 0))
-        const motionTrackPromise = animationManager?.speech2motion?.enabled
-          ? animationManager.speech2motion.fetchSpeechTrack({
-              speechText: utteranceText,
-              duration: audioDuration,
-              speechTime: timingInfo.speechTime,
-              motionKeywords: timingInfo.motionKeywords,
-              emotion: (activeEmotion && activeEmotion !== 'idle') ? activeEmotion : null,
-              labelExpression: 'Happiness | Neutral',
-              motionRecordId: turnRecordId,
-              isActionGesture: isAction,
-            }).catch((err) => {
-              console.warn('Speech2Motion pre-fetch error:', err)
-              return null
-            })
-          : Promise.resolve(null)
-
-        // 4. Sequence sequentially behind any playing utterance
-        activeUtterancePromise = activeUtterancePromise.then(async () => {
-          audioManager.setUserSpeakingState(false)
-
-          const motionTrack = await motionTrackPromise
-          if (motionTrack && isAction) {
-            motionTrack.isActionGesture = true
-          }
-
-          // Play audio and synchronized motion simultaneously with frame-accurate subtitle timing
-          await audioManager.playBufferedUtterance(
-            combinedPcm,
-            window.currentVrm,
-            motionTrack,
-            () => onActiveSubtitle?.(utteranceText, audioDuration),
-          )
-        }).catch((err) => {
-          console.warn('Speech2Motion utterance playback error:', err)
-        })
-      }
-
       const handleIncomingAudioChunk = (int16Data) => {
         if (!int16Data || int16Data.length === 0) return
 
-        // When model audio arrives, clear user speaking state
+        // Instant streaming playback: queue audio directly to Web Audio for immediate sub-second playback
         audioManager.setUserSpeakingState(false)
-
-        pendingModelAudioChunks.push(int16Data)
-
-        // Sentence boundary check: accumulate at least 2.6s of coherent audio before splitting at sentence punctuation
-        let totalBufferedSamples = 0
-        for (const c of pendingModelAudioChunks) totalBufferedSamples += c.length
-        const bufferedSeconds = totalBufferedSamples / 24000.0
-
-        if (bufferedSeconds >= 2.6) {
-          const currentText = stripExpressionCommands(pendingModelText).trim()
-          let unconsumed = currentText
-          if (lastSentenceFlushedText && unconsumed.startsWith(lastSentenceFlushedText)) {
-            unconsumed = unconsumed.slice(lastSentenceFlushedText.length).trim()
-          }
-          if (/[.?!。！？\n]\s*$/.test(unconsumed)) {
-            flushModelUtterance(false)
-            return
-          }
-        }
-
-        // Silence / pause debounce: flush if no more chunks arrive after 500ms
-        if (utteranceDispatchTimer) clearTimeout(utteranceDispatchTimer)
-        utteranceDispatchTimer = setTimeout(() => {
-          if (pendingModelAudioChunks.length > 0) {
-            flushModelUtterance(false)
-          }
-        }, 500)
+        audioManager.queueAudio(int16Data)
       }
 
       const handleTranscriptionWithAnimation = (role, text, isFinal, meta = {}) => {
@@ -696,10 +506,52 @@ export async function createVRMChatSystem(canvas, options = {}) {
           : text
         if (role === 'model' && typeof cleanText === 'string') {
           pendingModelText = cleanText
+
+          // Update live subtitle overlay immediately with streaming words
+          onActiveSubtitle?.(cleanText)
+
+          // Real-time emotion & expressiveness from spoken words
+          const detected = detectTextEmotion(cleanText)
+          if (detected) {
+            animationManager?.setExpression(detected.face, 3.5)
+            triggerAnimation(detected.body)
+          }
+
+          // Real-time special effects from spoken text
+          if (specialEffectsManager) {
+            const lower = cleanText.toLowerCase()
+            if (
+              /\b(stop\s+(?:the\s+)?(?:sakura|petals?|cherry\s+blossoms?)|turn\s+off\s+(?:the\s+)?(?:sakura|petals?)|no\s+more\s+(?:sakura|petals?)|clear\s+(?:the\s+)?(?:sakura|petals?))\b/i.test(lower) ||
+              /(\*stops?\s+(?:the\s+)?(?:sakura|petals?)\*|停止樱花|关掉樱花)/i.test(cleanText)
+            ) {
+              specialEffectsManager.stopSakura()
+            } else if (
+              /\b(start\s+(?:the\s+)?(?:sakura|petals?)|falling\s+sakura|cherry\s+blossoms?\s+fall(?:ing)?|rain\s+petals?)\b/i.test(lower) ||
+              /(\*.*(?:sakura|cherry\s+blossom|petals?).*\*|樱花飘落|漫天樱花)/i.test(cleanText)
+            ) {
+              specialEffectsManager.startSakura({ duration: 15.0 })
+            }
+          }
         }
+
         if (isFinal) {
           if (role === 'model') {
-            flushModelUtterance(true)
+            // Asynchronous background motion track fetching without blocking audio
+            if (animationManager?.speech2motion?.enabled) {
+              animationManager.speech2motion.fetchSpeechTrack({
+                speechText: cleanText,
+                duration: 4.0,
+                labelExpression: 'Happiness | Neutral',
+              }).then((track) => {
+                if (track && audioManager.isPlaying) {
+                  animationManager.speech2motion.startSynchronizedSpeech(
+                    track,
+                    audioManager.audioCtx?.currentTime || 0,
+                    4.0
+                  )
+                }
+              }).catch(() => {})
+            }
           }
         }
         callbacks?.onTranscription?.(role, cleanText, isFinal, meta)
@@ -851,8 +703,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
         callbacks?.onCueCardShow,
         callbacks?.onCueCardDismiss,
         () => {
-          console.log('🏁 Gemini Live turnComplete received -> Flushing final model utterance')
-          flushModelUtterance(true)
+          console.log('🏁 Gemini Live turnComplete received')
         },
         () => {
           console.log('⚡ Gemini Live: Model turn was interrupted by server -> clearing playback')
