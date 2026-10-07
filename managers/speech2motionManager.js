@@ -701,8 +701,9 @@ export class Speech2MotionManager {
 
   _getBackendBackoffDuration() {
     const errCount = this._backendConsecutiveErrors || 0
-    if (errCount <= 0) return 30000
-    return Math.min(300000, 30000 * Math.pow(2, Math.min(4, errCount - 1)))
+    if (errCount <= 0) return 45000
+    // Backoff ladder: 1 err -> 45s, 2 errs -> 90s, 3 errs -> 180s, 4+ errs -> 300s (5 min)
+    return Math.min(300000, 45000 * Math.pow(2, Math.min(3, errCount - 1)))
   }
 
   /**
@@ -809,7 +810,9 @@ export class Speech2MotionManager {
     isActionGesture = false,
   }) {
     const now = Date.now()
-    const backoff = isActionGesture ? 2000 : this._getBackendBackoffDuration()
+    const backoff = (isActionGesture && (this._backendConsecutiveErrors || 0) === 0)
+      ? 2000
+      : this._getBackendBackoffDuration()
     if (this._lastBackendErrorTime && (now - this._lastBackendErrorTime < backoff)) {
       return null
     }
@@ -1121,6 +1124,7 @@ export class Speech2MotionManager {
     const now = Date.now()
     const backoff = this._getBackendBackoffDuration()
     if (this._lastBackendErrorTime && (now - this._lastBackendErrorTime < backoff)) {
+      this._lastIdleRetryTime = now
       if (this.currentTrack) {
         this.playbackTime = 0
         this.currentTrack.is_idle = true
@@ -1130,6 +1134,7 @@ export class Speech2MotionManager {
     }
 
     this._isGeneratingFreshIdle = true
+    this._lastIdleRetryTime = now
 
     console.log(`🔄 Speech2Motion: Generating fresh idle track (reason: ${reason})...`)
 
@@ -1275,8 +1280,8 @@ export class Speech2MotionManager {
         isActionGesture: true,
       })
 
-      if (!track && recordId) {
-        // Fallback: Retry with keyword auto-generation
+      if (!track && recordId && (this._backendConsecutiveErrors || 0) === 0) {
+        // Fallback: Retry with keyword auto-generation only when backend is responsive
         track = await this._fetchTrack({
           motionRecordId: null,
           speechText: keyword,

@@ -40,7 +40,13 @@ if (typeof window !== 'undefined' && !window.__websocket_patched) {
       cleanUrl = url.replace('generativelanguage.googleapis.com//ws/', 'generativelanguage.googleapis.com/ws/')
       console.log('🔧 Patched Double-Slash WebSocket URL:', cleanUrl)
     }
-    return new OriginalWebSocket(cleanUrl, protocols)
+    const ws = new OriginalWebSocket(cleanUrl, protocols)
+    ws.addEventListener('close', (e) => {
+      if (e.code === 1007) {
+        console.warn('⚠️ WebSocket Close 1007 detected:', e.reason || 'Invalid Argument')
+      }
+    })
+    return ws
   }
   Object.assign(window.WebSocket, OriginalWebSocket)
   window.WebSocket.prototype = OriginalWebSocket.prototype
@@ -143,7 +149,7 @@ export class AIClient {
     this.liveModel = (!sanitizedModel || sanitizedModel.includes('3.1') || sanitizedModel.includes('2.0') || sanitizedModel.includes('2.5'))
       ? 'gemini-3.8-live'
       : sanitizedModel
-    this._loadSessionResumptionState()
+    this._clearSessionResumptionState()
     this._loadConversationProfile()
   }
 
@@ -327,14 +333,16 @@ export class AIClient {
       console.warn('Failed to consume vrm_session_ended flag:', e)
     }
 
-    if (forceFreshSession) {
+    if (forceFreshSession || !isReconnectSession) {
       this._clearSessionResumptionState()
     }
 
     const resumptionScope = this._createSessionResumptionScope(baseSystemPrompt)
-    const resumeHandle = (this.skipSessionResumptionOnce || forceFreshSession)
-      ? ''
-      : this._getValidSessionResumptionHandle(resumptionScope)
+    // ONLY attempt session resumption during an active in-session reconnect!
+    // A fresh session must always connect clean without a stale handle.
+    const resumeHandle = (isReconnectSession && !this.skipSessionResumptionOnce && !forceFreshSession)
+      ? this._getValidSessionResumptionHandle(resumptionScope)
+      : ''
     const isUsingSessionResumption = Boolean(resumeHandle)
     this.skipSessionResumptionOnce = false
 
@@ -733,6 +741,13 @@ export class AIClient {
 
             const reason = e.reason || 'Connection lost'
 
+            // If connection closed due to invalid argument (code 1007 / stale resume handle), purge resumption state and retry fresh
+            if (e.code === 1007 || reason.toLowerCase().includes('invalid argument')) {
+              console.warn('⚠️ Gemini Live connection closed due to Invalid Argument (code 1007). Purging session resumption handle.')
+              this._clearSessionResumptionState()
+              this.skipSessionResumptionOnce = true
+            }
+
             // If connection closed before session was ever established, it is a setup rejection (quota/key issue)
             const isSetupRejection = !this.isSessionOpen && (e.code === 1011 || e.code === 1008 || e.code === 1003 || reason.includes('quota') || reason.includes('Internal error'))
             if (isSetupRejection) {
@@ -832,6 +847,14 @@ export class AIClient {
         'Sending realtime text to active session:',
         normalizedText.substring(0, 50) + '...',
       )
+      if (this.activeSession && typeof this.activeSession.sendRealtimeInput === 'function') {
+        try {
+          await this.activeSession.sendRealtimeInput({ text: normalizedText })
+          return
+        } catch (realtimeErr) {
+          console.warn('sendRealtimeInput text failed, falling back to clientContent:', realtimeErr)
+        }
+      }
       await this._sendClientContent([
         { role: 'user', parts: [{ text: normalizedText }] },
       ], true)
@@ -1030,26 +1053,10 @@ export class AIClient {
   }
 
   _persistSessionResumptionState() {
+    // Session resumption handles from Gemini Live are ephemeral tokens meant ONLY for in-flight reconnection.
+    // They must never be persisted to localStorage across browser restarts, which causes Code 1007 Invalid Argument.
     const storage = this._getStorage()
-    if (!storage) return
-
-    if (
-      !this.sessionResumptionHandle ||
-      !this.sessionResumptionUpdatedAt ||
-      !this.sessionResumptionScope
-    ) {
-      storage.removeItem(this.sessionResumptionStorageKey)
-      return
-    }
-
-    storage.setItem(
-      this.sessionResumptionStorageKey,
-      JSON.stringify({
-        handle: this.sessionResumptionHandle,
-        updatedAt: this.sessionResumptionUpdatedAt,
-        scope: this.sessionResumptionScope,
-      }),
-    )
+    storage?.removeItem(this.sessionResumptionStorageKey)
   }
 
   _setSessionResumptionHandle(handle, scope) {

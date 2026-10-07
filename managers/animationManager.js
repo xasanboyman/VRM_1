@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation'
+import { VRMAnimationLoaderPlugin, createVRMAnimationClip, VRMLookAtQuaternionProxy } from '@pixiv/three-vrm-animation'
 import { cacheManager } from './cacheManager'
 import { Speech2MotionManager } from './speech2motionManager'
 
@@ -525,6 +525,8 @@ export class AnimationManager {
         this.vrm.humanoid.update = () => {}
       }
     }
+
+    this._ensureLookAtProxy()
 
     this.clearExpressionCache()
     this._tempKeysToUpdate = new Set()
@@ -2084,7 +2086,20 @@ export class AnimationManager {
     }
   }
 
+  _ensureLookAtProxy() {
+    if (!this.vrm?.scene || !this.vrm?.lookAt) return
+    const hasProxy = this.vrm.scene.children.some(
+      (obj) => obj.name === 'VRMLookAtQuaternionProxy' || (VRMLookAtQuaternionProxy && obj instanceof VRMLookAtQuaternionProxy)
+    )
+    if (!hasProxy && VRMLookAtQuaternionProxy) {
+      const proxy = new VRMLookAtQuaternionProxy(this.vrm.lookAt)
+      proxy.name = 'VRMLookAtQuaternionProxy'
+      this.vrm.scene.add(proxy)
+    }
+  }
+
   _parseVrmaClip(arrayBuffer, url) {
+    this._ensureLookAtProxy()
     return new Promise((resolve, reject) => {
       this.loader.parse(
         arrayBuffer,
