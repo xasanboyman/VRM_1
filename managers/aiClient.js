@@ -79,8 +79,10 @@ export class AIClient {
   workletNode = null
   mediaSourceNode = null
   mediaStream = null
+  micHighpassFilter = null
+  micLowpassFilter = null
   isRecording = false
-  inputBuffer = new Int16Array(2048)
+  inputBuffer = new Int16Array(512)
   inputBufferIndex = 0
   handledToolCallIds = new Set()
   isDisconnecting = false
@@ -107,7 +109,7 @@ export class AIClient {
   _clientVadSpeaking = false
   _lastClientSpeechTime = 0
   _clientSpeechThreshold = 0.016
-  _clientSilenceDurationMs = 300
+  _clientSilenceDurationMs = 240
 
   // Transcription state
   currentInputTranscription = ''
@@ -447,7 +449,7 @@ export class AIClient {
           startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
           endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
           prefixPaddingMs: 20,
-          silenceDurationMs: 250,
+          silenceDurationMs: 200,
         },
       },
       speechConfig: {
@@ -2061,11 +2063,29 @@ export class AIClient {
         }
 
         this.mediaSourceNode = this.audioContext.createMediaStreamSource(this.mediaStream)
+
+        // Acoustic speech band filters:
+        // 1. 85Hz Highpass: eliminates DC offset, air conditioner rumble, desk bumps, and plosive breath pops
+        this.micHighpassFilter = this.audioContext.createBiquadFilter()
+        this.micHighpassFilter.type = 'highpass'
+        this.micHighpassFilter.frequency.value = 85
+        this.micHighpassFilter.Q.value = 0.707
+
+        // 2. 7200Hz Lowpass: anti-aliasing & removes high-frequency hiss before 16kHz resampling
+        this.micLowpassFilter = this.audioContext.createBiquadFilter()
+        this.micLowpassFilter.type = 'lowpass'
+        this.micLowpassFilter.frequency.value = 7200
+        this.micLowpassFilter.Q.value = 0.707
+
         this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-processor')
         this.workletNode.port.onmessage = (e) => {
           if (this.isRecording) this._processAudioChunk(e.data)
         }
-        this.mediaSourceNode.connect(this.workletNode)
+
+        // Connect: Source -> Highpass -> Lowpass -> Worklet
+        this.mediaSourceNode.connect(this.micHighpassFilter)
+        this.micHighpassFilter.connect(this.micLowpassFilter)
+        this.micLowpassFilter.connect(this.workletNode)
 
         // Connect worklet to a silent sink so Chrome WebAudio render thread continuously processes frames
         this.silentGainNode = this.audioContext.createGain()
@@ -2079,6 +2099,14 @@ export class AIClient {
       this.mediaStream = null
       this.mediaSourceNode?.disconnect()
       this.mediaSourceNode = null
+      if (this.micHighpassFilter) {
+        try { this.micHighpassFilter.disconnect() } catch {}
+        this.micHighpassFilter = null
+      }
+      if (this.micLowpassFilter) {
+        try { this.micLowpassFilter.disconnect() } catch {}
+        this.micLowpassFilter = null
+      }
       if (this.silentGainNode) {
         try {
           this.silentGainNode.disconnect()
@@ -2120,6 +2148,14 @@ export class AIClient {
     this.mediaStream = null
     this.mediaSourceNode?.disconnect()
     this.mediaSourceNode = null
+    if (this.micHighpassFilter) {
+      try { this.micHighpassFilter.disconnect() } catch {}
+      this.micHighpassFilter = null
+    }
+    if (this.micLowpassFilter) {
+      try { this.micLowpassFilter.disconnect() } catch {}
+      this.micLowpassFilter = null
+    }
     if (this.silentGainNode) {
       try {
         this.silentGainNode.disconnect()

@@ -9,6 +9,7 @@ import { ConfigManager } from './configManager.js'
 import { VisionManager } from './visionManager.js'
 import { TelegramManager } from './telegramManager.js'
 import { cacheManager } from './cacheManager.js'
+import { FillerManager } from './fillerManager.js'
 import { buildAiLanguagePreferenceInstruction, resolveLanguage } from '../src/i18n/ui.js'
 
 export async function createVRMChatSystem(canvas, options = {}) {
@@ -43,6 +44,8 @@ export async function createVRMChatSystem(canvas, options = {}) {
   const vrmLoader = new VRMLoader()
   const audioManager = new AudioManager()
   window.vrmAudioManager = audioManager
+  const fillerManager = new FillerManager({ audioManager })
+  window.fillerManager = fillerManager
   const speechManager = new SpeechManager()
   const visionManager = new VisionManager()
   const telegramManager = new TelegramManager(telegramSettings)
@@ -117,6 +120,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
       if (animationManager.speech2motion) {
         animationManager.speech2motion.audioManager = audioManager
       }
+      fillerManager.setAnimationManager(animationManager)
       await animationManager.initialize({
         initialAnimations: ['NeutralIdle'],
         loadRemainingInBackground: true,
@@ -193,6 +197,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
     audioManager,
     speechManager,
     aiClient,
+    fillerManager,
     animationManager,
     specialEffectsManager,
     effectsManager: specialEffectsManager,
@@ -315,11 +320,14 @@ export async function createVRMChatSystem(canvas, options = {}) {
       const handleUserSpeechStateChange = (isSpeaking) => {
         audioManager.setUserSpeakingState(isSpeaking)
         if (isSpeaking) {
+          fillerManager.onUserSpeechStart()
           // Only cancel if assistant is actively playing audio (actual user barge-in)
           if (audioManager.isPlaying) {
             cancelPendingUtterance?.()
             animationManager?.setSpeakingState(false)
           }
+        } else {
+          fillerManager.onUserSpeechEnd()
         }
       }
 
@@ -365,6 +373,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
         '12. ⚡ Speed Lines: Manga action radial lines for dramatic tension (trigger_special_effect(effect: "speed_lines")). ' +
         '13. 📺 Glitch: Cyber glitch scanline pulse (trigger_special_effect(effect: "glitch")). ' +
         'RAPID LATENCY & CONVERSATIONAL FLOW: Prioritize ultra-fast, snappy voice responses! Reply immediately and spontaneously without hesitating. Do NOT call tools on routine sentences. Call trigger_special_effect or trigger_gesture only when specifically requested by the user, or for distinct emotional moments. Never delay voice dialogue for tool calls. ' +
+        'CONVERSATIONAL TURN-TAKING & IMMEDIATE ENGAGEMENT: Begin responses immediately with natural conversational reaction particles or acknowledgments (e.g. "Yeah!", "Oh!", "Mm-hmm!", "Gotcha!", "Haha!", "Right!") to ensure instant, snappy turn-taking. Keep your first words spoken immediately without pause. Keep answers natural, concise, and punchy (1-2 sentences). ' +
         'PERSONALITY & VOICE: Witty, playful, charming, slightly cheeky with genuine warmth. Keep replies concise, conversational, and natural (typically 1-3 sentences, avoid long monologues). ' +
         'STRICT NO-ASTERISK RULE: You must NEVER include asterisks or written stage directions in your responses. Never write *spins around*, *salutes playfully*, *waves*, etc. Express yourself purely through spoken dialogue. ' +
         'TOOLS: Call modulate_voice(pitch_shift_cents, tone, expression) when asked to change your vocal tone/pitch. Call trigger_gesture(gesture) when asked to perform a body action (salute, wave, dance, spin, bow, clap, etc.). Call trigger_special_effect(effect, action, duration) and stop_special_effect(effect) when asked to trigger effects. Use vision tools only when requested. When a timer is requested, call start_timer/cancel_timer.'
@@ -494,6 +503,9 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
       const handleIncomingAudioChunk = (int16Data) => {
         if (!int16Data || int16Data.length === 0) return
+
+        // Immediately notify filler manager that model audio is arriving to smoothly crossfade active filler
+        fillerManager.onGeminiAudioArrival()
 
         // Instant streaming playback: queue audio directly to Web Audio for immediate sub-second playback
         audioManager.setUserSpeakingState(false)
@@ -725,9 +737,11 @@ export async function createVRMChatSystem(canvas, options = {}) {
         callbacks?.onCueCardDismiss,
         () => {
           console.log('🏁 Gemini Live turnComplete received')
+          fillerManager.onGeminiTurnComplete()
         },
         () => {
           console.log('⚡ Gemini Live: Model turn was interrupted by server -> clearing playback')
+          fillerManager.onUserSpeechStart()
           audioManager.interruptPlayback()
           cancelPendingUtterance?.()
           animationManager?.setSpeakingState(false)

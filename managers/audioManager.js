@@ -46,7 +46,17 @@ export class AudioManager {
     this.analyser = this.audioCtx.createAnalyser()
     this.analyser.fftSize = 512
     this.analyser.smoothingTimeConstant = 0.35
-    this.analyser.connect(this.audioCtx.destination)
+
+    // Broadcast-quality dynamics compressor / peak limiter to prevent clipping spikes
+    this.compressor = this.audioCtx.createDynamicsCompressor()
+    this.compressor.threshold.value = -6
+    this.compressor.knee.value = 8
+    this.compressor.ratio.value = 3.5
+    this.compressor.attack.value = 0.003
+    this.compressor.release.value = 0.12
+
+    this.analyser.connect(this.compressor)
+    this.compressor.connect(this.audioCtx.destination)
     this.timeDomainDataArray = new Uint8Array(this.analyser.frequencyBinCount)
     this.frequencyDataArray = new Uint8Array(this.analyser.frequencyBinCount)
     if (!this.audio2face) {
@@ -202,6 +212,16 @@ export class AudioManager {
       float32Data[i] = int16Data[i] / 32768.0
     }
 
+    // Micro-fade (1.5ms / 36 samples) to eliminate boundary seam clicks
+    const fadeSamples = Math.min(36, Math.floor(float32Data.length / 4))
+    if (fadeSamples > 0) {
+      for (let i = 0; i < fadeSamples; i++) {
+        const ramp = i / fadeSamples
+        float32Data[i] *= ramp
+        float32Data[float32Data.length - 1 - i] *= ramp
+      }
+    }
+
     const audioBuffer = this.audioCtx.createBuffer(1, float32Data.length, 24000)
     audioBuffer.getChannelData(0).set(float32Data)
 
@@ -215,11 +235,18 @@ export class AudioManager {
     source.connect(this.analyser)
 
     const now = this.audioCtx.currentTime
-    // Ultra-low latency scheduling: 35ms lookahead on initial chunk, seamless back-to-back afterwards
+    // Adaptive jitter buffer: 28ms lookahead on fresh speech, seamless 4ms recovery on minor packet jitter
     if (this.nextStartTime < now) {
-      this.nextStartTime = now + 0.035
-      this.speechStartTime = this.nextStartTime
-      this.totalScheduledDuration = 0
+      const underrunSec = now - this.nextStartTime
+      if (this.isPlaying && underrunSec < 0.060) {
+        // Minor packet jitter during speech: recover immediately without audible gap
+        this.nextStartTime = now + 0.004
+      } else {
+        // Fresh utterance start or large pause: 28ms lookahead
+        this.nextStartTime = now + 0.028
+        this.speechStartTime = this.nextStartTime
+        this.totalScheduledDuration = 0
+      }
     }
 
     source.start(this.nextStartTime)
