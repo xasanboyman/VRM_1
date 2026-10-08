@@ -242,8 +242,8 @@ export class AudioManager {
         // Minor packet jitter during speech: recover immediately without audible gap
         this.nextStartTime = now + 0.004
       } else {
-        // Fresh utterance start or large pause: 28ms lookahead
-        this.nextStartTime = now + 0.028
+        // Fresh utterance start or large pause: snappy 14ms lookahead
+        this.nextStartTime = now + 0.014
         this.speechStartTime = this.nextStartTime
         this.totalScheduledDuration = 0
       }

@@ -512,25 +512,31 @@ export async function createVRMChatSystem(canvas, options = {}) {
         audioManager.queueAudio(int16Data)
       }
 
+      let lastDetectedActionTag = null
+      let lastDetectedBodyEmotion = null
+
       const handleTranscriptionWithAnimation = (role, text, isFinal, meta = {}) => {
         if (role === 'model' && typeof text === 'string') {
           // If the model generated asterisk action tags (e.g. *spins around happily*, *salutes playfully*),
           // trigger the gesture immediately so the physical motion plays, while stripping it from spoken dialogue!
           const actionMatch = text.match(/\*+([^*]+)\*+/)
           if (actionMatch && actionMatch[1]) {
-            const actionText = actionMatch[1].toLowerCase()
-            if (/\b(salute|saluting)\b/.test(actionText)) triggerAnimation('salute')
-            else if (/\b(spin|spins|twirl|rotate)\b/.test(actionText)) triggerAnimation('spin')
-            else if (/\b(wave|waves|waving|hello|hi)\b/.test(actionText)) triggerAnimation('wave')
-            else if (/\b(bow|bows|curtsy)\b/.test(actionText)) triggerAnimation('bow')
-            else if (/\b(clap|claps|clapping|applause)\b/.test(actionText)) triggerAnimation('clap')
-            else if (/\b(heart|love|heart_fingers)\b/.test(actionText)) triggerAnimation('heart_fingers')
-            else if (/\b(thumbs_up|thumbsup)\b/.test(actionText)) triggerAnimation('thumbs_up')
-            else if (/\b(shrug|shrugs)\b/.test(actionText)) triggerAnimation('shrug')
-            else if (/\b(cheer|cheers|jump|celebrate)\b/.test(actionText)) triggerAnimation('cheer')
-            else if (/\b(peace|v_sign)\b/.test(actionText)) triggerAnimation('peace')
-            else if (/\b(stretch|stretches)\b/.test(actionText)) triggerAnimation('stretch')
-            else if (/\b(facepalm)\b/.test(actionText)) triggerAnimation('facepalm')
+            const rawAction = actionMatch[1].trim().toLowerCase()
+            if (rawAction !== lastDetectedActionTag) {
+              lastDetectedActionTag = rawAction
+              if (/\b(salute|saluting)\b/.test(rawAction)) triggerAnimation('salute')
+              else if (/\b(spin|spins|twirl|rotate)\b/.test(rawAction)) triggerAnimation('spin')
+              else if (/\b(wave|waves|waving|hello|hi)\b/.test(rawAction)) triggerAnimation('wave')
+              else if (/\b(bow|bows|curtsy)\b/.test(rawAction)) triggerAnimation('bow')
+              else if (/\b(clap|claps|clapping|applause)\b/.test(rawAction)) triggerAnimation('clap')
+              else if (/\b(heart|love|heart_fingers)\b/.test(rawAction)) triggerAnimation('heart_fingers')
+              else if (/\b(thumbs_up|thumbsup)\b/.test(rawAction)) triggerAnimation('thumbs_up')
+              else if (/\b(shrug|shrugs)\b/.test(rawAction)) triggerAnimation('shrug')
+              else if (/\b(cheer|cheers|jump|celebrate)\b/.test(rawAction)) triggerAnimation('cheer')
+              else if (/\b(peace|v_sign)\b/.test(rawAction)) triggerAnimation('peace')
+              else if (/\b(stretch|stretches)\b/.test(rawAction)) triggerAnimation('stretch')
+              else if (/\b(facepalm)\b/.test(rawAction)) triggerAnimation('facepalm')
+            }
           }
         }
 
@@ -543,9 +549,10 @@ export async function createVRMChatSystem(canvas, options = {}) {
           // Update live subtitle overlay immediately with streaming words
           onActiveSubtitle?.(cleanText)
 
-          // Real-time emotion & expressiveness from spoken words
+          // Real-time emotion & expressiveness from spoken words (deduplicated per turn)
           const detected = detectTextEmotion(cleanText)
-          if (detected) {
+          if (detected && detected.body !== lastDetectedBodyEmotion) {
+            lastDetectedBodyEmotion = detected.body
             animationManager?.setExpression(detected.face, 3.5)
             triggerAnimation(detected.body)
           }
@@ -568,6 +575,8 @@ export async function createVRMChatSystem(canvas, options = {}) {
         }
 
         if (isFinal) {
+          lastDetectedActionTag = null
+          lastDetectedBodyEmotion = null
           if (role === 'model') {
             // Asynchronous background motion track fetching without blocking audio
             if (animationManager?.speech2motion?.enabled) {
@@ -822,16 +831,26 @@ export async function createVRMChatSystem(canvas, options = {}) {
           }
         }
 
+        let completedTurns = 0
+        let turnResolutionTimeout = null
         const turnPromise = new Promise((resolve) => {
-          const timeout = setTimeout(() => resolve(), 12000)
+          turnResolutionTimeout = setTimeout(() => resolve(), 12000)
 
           const origTurnComplete = aiClient.connectionArgs?.onTurnComplete
           if (aiClient.connectionArgs) {
             aiClient.connectionArgs.onTurnComplete = function() {
+              completedTurns++
               turnCompleteTime = performance.now()
-              clearTimeout(timeout)
               origTurnComplete?.()
-              resolve()
+
+              // If turn 1 executed a tool call, wait briefly for turn 2 to deliver accompanying voice audio
+              if (firstToolTime && !firstAudioTime && completedTurns < 2) {
+                clearTimeout(turnResolutionTimeout)
+                turnResolutionTimeout = setTimeout(() => resolve(), 4500)
+              } else {
+                clearTimeout(turnResolutionTimeout)
+                resolve()
+              }
             }
           }
         })
@@ -861,7 +880,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
           'TTFA (Voice Audio)': ttfa ? `${ttfa} ms` : (actionsTriggered.length > 0 ? 'Mocap Action' : 'N/A'),
           'Total Turn': `${totalTurn} ms`,
           'Voice Duration': `${audioSec}s`,
-          'Action': actionsTriggered.join(', ') || 'Speech',
+          'Action': [...new Set(actionsTriggered)].join(', ') || 'Speech',
           'Status': ttr && ttr < 1000 ? '⚡ ULTRA FAST' : (ttr < 1500 ? 'FAST' : 'OK')
         }
         results.push(row)

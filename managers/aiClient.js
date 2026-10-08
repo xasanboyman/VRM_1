@@ -30,6 +30,37 @@ export function stripExpressionCommands(text) {
     .trim()
 }
 
+/**
+ * High-performance base64 decoder using native SIMD V8 Uint8Array.fromBase64 when available.
+ */
+export function decodeBase64ToUint8Array(base64Str) {
+  if (typeof Uint8Array.fromBase64 === 'function') {
+    return Uint8Array.fromBase64(base64Str)
+  }
+  const binaryString = atob(base64Str)
+  const len = binaryString.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i)
+  }
+  return bytes
+}
+
+/**
+ * High-performance base64 encoder using native SIMD V8 Uint8Array.prototype.toBase64 when available.
+ */
+export function encodeUint8ArrayToBase64(bytes) {
+  if (typeof bytes?.toBase64 === 'function') {
+    return bytes.toBase64()
+  }
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return btoa(binary)
+}
+
 // Monkeypatch global WebSocket to correct the double-slash URL bug in the @google/genai SDK
 if (typeof window !== 'undefined' && !window.__websocket_patched) {
   window.__websocket_patched = true
@@ -658,10 +689,7 @@ export class AIClient {
 
               for (const part of content.modelTurn.parts) {
                 if (part.inlineData?.data) {
-                  const binaryString = atob(part.inlineData.data)
-                  const bytes = new Uint8Array(binaryString.length)
-                  for (let i = 0; i < binaryString.length; i++)
-                    bytes[i] = binaryString.charCodeAt(i)
+                  const bytes = decodeBase64ToUint8Array(part.inlineData.data)
                   const samples = Math.floor(bytes.byteLength / 2)
                   if (samples > 0) {
                     onAudioData?.(new Int16Array(bytes.buffer, bytes.byteOffset, samples))
@@ -1387,12 +1415,7 @@ export class AIClient {
     if (!(int16Data instanceof Int16Array) || int16Data.length === 0) return ''
 
     const bytes = new Uint8Array(int16Data.buffer, int16Data.byteOffset, int16Data.byteLength)
-    let binary = ''
-    const chunkSize = 0x8000
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
-    }
-    return btoa(binary)
+    return encodeUint8ArrayToBase64(bytes)
   }
 
   _encodeUtf8TextToBase64(text) {
@@ -1400,12 +1423,7 @@ export class AIClient {
     if (!normalizedText) return ''
 
     const bytes = new TextEncoder().encode(normalizedText)
-    let binary = ''
-    const chunkSize = 0x8000
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
-    }
-    return btoa(binary)
+    return encodeUint8ArrayToBase64(bytes)
   }
 
   async _createHistoryAttachmentPart(historyDocument) {
@@ -1617,7 +1635,7 @@ export class AIClient {
     if (!toolCall?.functionCalls || toolCall.functionCalls.length === 0) return
     console.log(`🎯 ToolCall batch received (${toolCall.functionCalls.length} function(s)):`, toolCall.functionCalls.map((f) => f.name))
     try {
-      const functionResponses = []
+      const callsToRun = []
       for (const fc of toolCall.functionCalls) {
         if (fc.id && this.handledToolCallIds.has(fc.id)) {
           console.log(`⏩ Skipping duplicate toolCall id: ${fc.id} (${fc.name})`)
@@ -1630,22 +1648,24 @@ export class AIClient {
             this.handledToolCallIds.delete(first)
           }
         }
-        const resp = await this._executeFunction(
-          fc,
-          onAnimationTrigger,
-          onExpressionTrigger,
-          onVisionTrigger,
-          onScreenTrigger,
-          onCameraOffTrigger,
-          onScreenOffTrigger,
-          onUserNameSet,
-          onMemorySaved,
-          onMemoryDeleted,
+        callsToRun.push(
+          this._executeFunction(
+            fc,
+            onAnimationTrigger,
+            onExpressionTrigger,
+            onVisionTrigger,
+            onScreenTrigger,
+            onCameraOffTrigger,
+            onScreenOffTrigger,
+            onUserNameSet,
+            onMemorySaved,
+            onMemoryDeleted,
+          )
         )
-        if (resp) {
-          functionResponses.push(resp)
-        }
       }
+
+      const results = await Promise.all(callsToRun)
+      const functionResponses = results.filter(Boolean)
 
       if (this.activeSession && functionResponses.length > 0) {
         console.log(`📤 Sending batched toolResponse (${functionResponses.length} response(s)):`, functionResponses)

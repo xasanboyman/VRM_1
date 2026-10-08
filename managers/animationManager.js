@@ -1042,6 +1042,7 @@ export class AnimationManager {
     onProgress?.({ current: 1, total: 1, name: 'Speech2Motion' })
     await this.speech2motion.startInfiniteMotion()
     console.log('AnimationManager Ready: Speech2Motion streaming motion initialized')
+    this.speech2motion?.prewarmCommonGestures?.()
   }
 
   async loadClipWithFallback(name, localPath, remoteUrl, isLoop) {

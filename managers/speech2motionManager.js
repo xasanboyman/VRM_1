@@ -333,6 +333,10 @@ export class Speech2MotionManager {
     this.recentActionGestures = new Map()
     this.currentActionKeyword = null
 
+    // Cache of static mocap tracks indexed by recordId (instant 0ms trigger)
+    this.recordTrackCache = new Map()
+    this._isPrewarmingGestures = false
+
     // Full Emotion to Body Mocap Mapping Dictionary
     this.emotionAliasMap = {
       shy: 'shy',
@@ -809,6 +813,12 @@ export class Speech2MotionManager {
     motionRecordId = null,
     isActionGesture = false,
   }) {
+    // Fast path: Return cached deterministic mocap records in 0 ms
+    if (motionRecordId && this.recordTrackCache.has(motionRecordId)) {
+      const cached = this.recordTrackCache.get(motionRecordId)
+      return { ...cached, isActionGesture: true }
+    }
+
     const now = Date.now()
     const backoff = (isActionGesture && (this._backendConsecutiveErrors || 0) === 0)
       ? 2000
@@ -859,6 +869,9 @@ export class Speech2MotionManager {
       const track = this._parseMotionPayload(data)
       if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
         track.isActionGesture = true
+      }
+      if (track && motionRecordId) {
+        this.recordTrackCache.set(motionRecordId, track)
       }
       return track
     } catch (err) {
@@ -1340,6 +1353,37 @@ export class Speech2MotionManager {
   }
 
   /**
+   * Pre-warm common mocap gesture tracks in background so interactive triggers play in 0 ms.
+   */
+  async prewarmCommonGestures() {
+    if (this._isPrewarmingGestures) return
+    this._isPrewarmingGestures = true
+
+    // Top priority action gestures:
+    // 742: salute, 762: wave, 836: spin, 851: shrug, 862: nod, 871: thinking, 870: cheer, 838: peace
+    const priorityRecordIds = [742, 762, 836, 851, 862, 871, 870, 838]
+    const uncached = priorityRecordIds.filter((id) => !this.recordTrackCache.has(id))
+    if (uncached.length === 0) {
+      this._isPrewarmingGestures = false
+      return
+    }
+
+    console.log(`⚡ Speech2Motion: Pre-warming ${uncached.length} common gestures in background...`)
+    for (const recordId of uncached) {
+      if (this._lastBackendErrorTime && (Date.now() - this._lastBackendErrorTime < 4000)) break
+      try {
+        await this._fetchTrack({ motionRecordId: recordId, isActionGesture: true })
+        // Small stagger so backend is not saturated
+        await new Promise((r) => setTimeout(r, 150))
+      } catch (e) {
+        break
+      }
+    }
+    this._isPrewarmingGestures = false
+    console.log(`✅ Speech2Motion: Gesture cache ready with ${this.recordTrackCache.size} pre-warmed mocap records`)
+  }
+
+  /**
    * Reset all blendshapes previously driven by Speech2Motion to 0.
    */
   _clearAppliedBlendshapes() {
@@ -1401,14 +1445,19 @@ export class Speech2MotionManager {
    * Parse the binary flat bytes payload into an indexed keyframe track with skirt clearance.
    */
   _parseMotionPayload(data) {
-    const binaryString = atob(data.data_base64)
-    const len = binaryString.length
-    const bytes = new Uint8Array(len)
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binaryString.charCodeAt(i)
+    let bytes
+    if (typeof Uint8Array.fromBase64 === 'function') {
+      bytes = Uint8Array.fromBase64(data.data_base64)
+    } else {
+      const binaryString = atob(data.data_base64)
+      const len = binaryString.length
+      bytes = new Uint8Array(len)
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
     }
 
-    const floatView = new Float32Array(bytes.buffer)
+    const floatView = new Float32Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 4))
     const nFrames = data.n_frames
     const fps = data.fps || 30.0
     const jointNames = data.joint_names || []
