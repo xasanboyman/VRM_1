@@ -1733,6 +1733,22 @@ export class AnimationManager {
         }
       }
 
+      // Procedural Attentive Listening Backchannel (0ms latency, pure local Three.js transform)
+      if (this._listeningReactionTimer > 0) {
+        this._listeningReactionTimer -= delta
+        if (this._listeningReactionTimer <= 0) {
+          this._listeningReactionTimer = 0
+        } else {
+          const t = 1.0 - (this._listeningReactionTimer / 0.45)
+          const p = Math.sin(t * Math.PI) // smooth sine bell pulse: 0 -> 1 -> 0
+          const head = this.vrm.humanoid?.getNormalizedBoneNode?.('head') || this.vrm.scene?.getObjectByName?.('J_Bip_C_Head') || this.vrm.scene?.getObjectByName?.('Head')
+          if (head) {
+            head.rotation.x += p * 0.038 // subtle ~2.2 degree nod down
+            head.rotation.z += p * 0.012 // subtle ~0.7 degree attentive tilt
+          }
+        }
+      }
+
       if (this.vrm.expressionManager) {
         this.updateBlink(delta)
         this.updateExpressions(delta)
@@ -1931,6 +1947,25 @@ export class AnimationManager {
     }
 
     manager.update()
+  }
+
+  /**
+   * Trigger an immediate, purely local procedural listening reaction (<10ms, 0 network requests).
+   * Softly tilts and nods the head to acknowledge the user's speech pause.
+   */
+  triggerListeningReaction() {
+    if (this.isSpeaking) return
+    const now = Date.now()
+    if (now - (this._lastListeningReactionTime || 0) < 1400) return
+    this._lastListeningReactionTime = now
+    this._listeningReactionTimer = 0.45
+  }
+
+  /**
+   * Cancel active listening reaction (e.g. when user resumes speaking or model audio arrives).
+   */
+  cancelListeningReaction() {
+    this._listeningReactionTimer = 0
   }
 
   async triggerNamedAnimation(name) {

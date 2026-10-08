@@ -163,8 +163,8 @@ export class Audio2FaceManager {
   _getBackendBackoffDuration() {
     const errCount = this._backendConsecutiveErrors || 0
     if (errCount <= 0) return 0
-    // Backoff ladder: 1 err -> 30s, 2 errs -> 60s, 3 errs -> 120s, 4+ errs -> 300s (5 min)
-    return Math.min(300000, 30000 * Math.pow(2, Math.min(3, errCount - 1)))
+    // Progressive backoff ladder: 1 err -> 3s, 2 errs -> 6s, 3 errs -> 12s, 4+ errs -> 25s
+    return Math.min(25000, 3000 * Math.pow(2, Math.min(3, errCount - 1)))
   }
 
   /**
@@ -212,11 +212,11 @@ export class Audio2FaceManager {
       }
       const b64 = btoa(binary)
 
-      // Send to Audio2Face with sub-second timeout
+      // Send to Audio2Face with reasonable timeout
       const response = await fetch(this.apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(1200) : undefined,
+        signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(4500) : undefined,
         body: JSON.stringify({
           audio_base64: b64,
           sample_rate: this.sampleRate,
@@ -235,10 +235,13 @@ export class Audio2FaceManager {
         this._appendTimeline(res, speechStartTime)
       }
     } catch (err) {
-      this._backendConsecutiveErrors = (this._backendConsecutiveErrors || 0) + 1
-      this._lastBackendErrorTime = Date.now()
-      if (this._backendConsecutiveErrors <= 2) {
-        console.warn(`Audio2Face unavailable, using formant fallback (backed off ${Math.round(this._getBackendBackoffDuration() / 1000)}s):`, err.message || err)
+      const isAbort = err?.name === 'AbortError' || String(err?.message || '').toLowerCase().includes('aborted')
+      if (!isAbort) {
+        this._backendConsecutiveErrors = (this._backendConsecutiveErrors || 0) + 1
+        this._lastBackendErrorTime = Date.now()
+        if (this._backendConsecutiveErrors <= 2) {
+          console.warn(`Audio2Face unavailable, using formant fallback (backed off ${Math.round(this._getBackendBackoffDuration() / 1000)}s):`, err.message || err)
+        }
       }
     } finally {
       this.isDispatching = false

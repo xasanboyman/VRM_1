@@ -701,9 +701,9 @@ export class Speech2MotionManager {
 
   _getBackendBackoffDuration() {
     const errCount = this._backendConsecutiveErrors || 0
-    if (errCount <= 0) return 45000
-    // Backoff ladder: 1 err -> 45s, 2 errs -> 90s, 3 errs -> 180s, 4+ errs -> 300s (5 min)
-    return Math.min(300000, 45000 * Math.pow(2, Math.min(3, errCount - 1)))
+    if (errCount <= 0) return 0
+    // Progressive backoff ladder: 1 err -> 3s, 2 errs -> 6s, 3 errs -> 12s, 4+ errs -> 25s
+    return Math.min(25000, 3000 * Math.pow(2, Math.min(3, errCount - 1)))
   }
 
   /**
@@ -841,7 +841,7 @@ export class Speech2MotionManager {
       const response = await fetch(this.apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(1200) : undefined,
+        signal: typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(6000) : undefined,
         body: JSON.stringify(payload),
       })
 
@@ -862,6 +862,11 @@ export class Speech2MotionManager {
       }
       return track
     } catch (err) {
+      const isAbort = err?.name === 'AbortError' || String(err?.message || '').toLowerCase().includes('aborted')
+      if (isAbort) {
+        // Aborted request is transient (user spoke, new track started, or turn ended) - do not penalize backend
+        return null
+      }
       this._backendConsecutiveErrors = (this._backendConsecutiveErrors || 0) + 1
       this._lastBackendErrorTime = Date.now()
       const currentBackoff = this._getBackendBackoffDuration()
@@ -1741,8 +1746,12 @@ export class Speech2MotionManager {
       }
     }
 
-    if (!this.isAniModel && this.vrm?.humanoid?.update) {
-      this.vrm.humanoid.update()
+    if (!this.isAniModel) {
+      if (this.animationManager?._originalHumanoidUpdate) {
+        this.animationManager._originalHumanoidUpdate()
+      } else if (this.vrm?.humanoid?.update) {
+        this.vrm.humanoid.update()
+      }
     }
 
     if (this.isAniModel) {

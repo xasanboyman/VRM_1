@@ -109,7 +109,11 @@ export class AIClient {
   _clientVadSpeaking = false
   _lastClientSpeechTime = 0
   _clientSpeechThreshold = 0.016
-  _clientSilenceDurationMs = 240
+  _clientSilenceDurationMs = 480
+  _speechOnsetCount = 0
+  _hasConfirmedSpeechTurn = false
+  _hasSentAudioStreamEndForCurrentTurn = false
+  _lastAudioStreamEndTime = 0
 
   // Transcription state
   currentInputTranscription = ''
@@ -2219,16 +2223,45 @@ export class AIClient {
     const now = Date.now()
 
     if (chunkRms >= this._clientSpeechThreshold) {
-      this._clientVadSpeaking = true
+      this._speechOnsetCount = Math.min(10, (this._speechOnsetCount || 0) + 1)
       this._lastClientSpeechTime = now
-      this._setUserSpeakingState(true)
-    } else if (this._clientVadSpeaking && now - this._lastClientSpeechTime >= this._clientSilenceDurationMs) {
-      this._clientVadSpeaking = false
-      if (this.activeSession && this.isSessionOpen && !this.isDisconnecting) {
-        console.log('⚡ Hybrid VAD: Client silence threshold reached -> sending audioStreamEnd')
-        void this.sendAudioStreamEnd()
+
+      // Require at least 2 consecutive chunks (~64ms) of sustained speech energy to confirm onset
+      if (this._speechOnsetCount >= 2) {
+        if (!this._clientVadSpeaking) {
+          this._clientVadSpeaking = true
+          this._hasConfirmedSpeechTurn = true
+          this._hasSentAudioStreamEndForCurrentTurn = false
+          this._setUserSpeakingState(true)
+        }
       }
-      this._setUserSpeakingState(false)
+    } else {
+      if (this._speechOnsetCount > 0 && !this._clientVadSpeaking) {
+        this._speechOnsetCount = Math.max(0, this._speechOnsetCount - 1)
+      }
+
+      if (this._clientVadSpeaking && now - this._lastClientSpeechTime >= this._clientSilenceDurationMs) {
+        this._clientVadSpeaking = false
+        this._speechOnsetCount = 0
+
+        // Send audioStreamEnd only once per confirmed speech turn with cooldown guard
+        if (
+          this._hasConfirmedSpeechTurn &&
+          !this._hasSentAudioStreamEndForCurrentTurn &&
+          now - (this._lastAudioStreamEndTime || 0) >= 1000 &&
+          this.activeSession &&
+          this.isSessionOpen &&
+          !this.isDisconnecting
+        ) {
+          this._hasSentAudioStreamEndForCurrentTurn = true
+          this._hasConfirmedSpeechTurn = false
+          this._lastAudioStreamEndTime = now
+          console.log('⚡ Hybrid VAD: Client silence threshold reached -> sending audioStreamEnd')
+          void this.sendAudioStreamEnd()
+        }
+
+        this._setUserSpeakingState(false)
+      }
     }
 
     if (
@@ -2301,6 +2334,11 @@ export class AIClient {
 
   _resetVoiceActivityState() {
     this._clearUserSpeechReleaseTimer()
+    this._clientVadSpeaking = false
+    this._speechOnsetCount = 0
+    this._hasConfirmedSpeechTurn = false
+    this._hasSentAudioStreamEndForCurrentTurn = false
+    this._lastClientSpeechTime = 0
   }
 
   disconnect(reason = 'User disconnected') {
