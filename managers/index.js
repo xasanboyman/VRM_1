@@ -358,7 +358,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
         '- PITCH SHIFTS & ANGER: When angry, serious, dramatic, menacing, or when the user prompts you to "speak with a low pitch" or "sound angry/deep", noticeably drop your pitch into a deep, intense, or deadpan tone! When excited, cheerful, surprised, or cute, raise your pitch into a bright, lively tone! ' +
         '- WHISPERS & TONE VARIETY: Whisper softly for secrets or comforting moments. Express gasps, sighs (phew, sigh), breathless excitement, and natural dramatic pauses! ' +
         '- PROMPT OBEDIENCE: Whenever the user asks you to alter your voice (e.g. "speak with a low pitch", "sound angry", "laugh", "whisper", "sound dramatic", "speak cute"), IMMEDIATELY and fully transform your vocal tone and pitch! ' +
-        'EXPRESSIVE ANIME SPECIAL EFFECTS (USE ACTIVELY ALL THE TIME!): You have a complete arsenal of interactive anime special effects that you SHOULD USE OFTEN AND ALL THE TIME during conversation! ' +
+        'EXPRESSIVE ANIME SPECIAL EFFECTS: You have a complete arsenal of interactive anime special effects that you can trigger when requested or at key dramatic/emotional moments: ' +
         '1. 🌸 Falling Sakura Petals: Atmospheric tumbling cherry blossoms! Call trigger_special_effect(effect: "sakura") to start falling petals (or with duration e.g. duration: 15.0). YOU CAN AND MUST STOP IT whenever you or the user want, or when the mood changes, by calling stop_special_effect(effect: "sakura") or trigger_special_effect(effect: "sakura", action: "stop")! ' +
         '2. 💖 Hearts: Floating glowing pink hearts burst for romance, sweet teasing, compliments, love, or gratitude (trigger_special_effect(effect: "hearts")). ' +
         '3. ✨ Sparkles: Twinkling stardust sparkles when cheerful, proud, celebratory, or bright (trigger_special_effect(effect: "sparkles")). ' +
@@ -821,12 +821,27 @@ export async function createVRMChatSystem(canvas, options = {}) {
           return origQueueAudio(int16)
         }
 
-        // Hook tool calls if actions triggered
+        // Hook all tool calls (gestures, expressions, special effects) for frame-accurate TTFR capture
+        const origHandleToolCall = aiClient._handleToolCall?.bind(aiClient)
+        if (origHandleToolCall) {
+          aiClient._handleToolCall = function(...args) {
+            if (!firstToolTime) firstToolTime = performance.now()
+            const toolCall = args[0]
+            if (toolCall?.functionCalls) {
+              for (const fc of toolCall.functionCalls) {
+                const detail = fc.args?.gesture || fc.args?.effect || fc.args?.expression || fc.name
+                if (detail) actionsTriggered.push(detail)
+              }
+            }
+            return origHandleToolCall(...args)
+          }
+        }
+
         const origTriggerAnim = animationManager?.triggerNamedAnimation?.bind(animationManager)
         if (animationManager && origTriggerAnim) {
           animationManager.triggerNamedAnimation = function(name) {
             if (!firstToolTime) firstToolTime = performance.now()
-            actionsTriggered.push(name)
+            if (name) actionsTriggered.push(name)
             return origTriggerAnim(name)
           }
         }
@@ -863,13 +878,15 @@ export async function createVRMChatSystem(canvas, options = {}) {
           if (animationManager && origTriggerAnim) {
             animationManager.triggerNamedAnimation = origTriggerAnim
           }
+          if (origHandleToolCall) {
+            aiClient._handleToolCall = origHandleToolCall
+          }
         }
 
         const now = performance.now()
         const ttfa = firstAudioTime ? Math.round(firstAudioTime - t0) : null
-        const ttr = (firstAudioTime && firstToolTime)
-          ? Math.round(Math.min(firstAudioTime, firstToolTime) - t0)
-          : (firstAudioTime ? Math.round(firstAudioTime - t0) : (firstToolTime ? Math.round(firstToolTime - t0) : null))
+        const ttrCandidates = [firstAudioTime, firstToolTime].filter((t) => typeof t === 'number')
+        const ttr = ttrCandidates.length > 0 ? Math.round(Math.min(...ttrCandidates) - t0) : null
         const totalTurn = Math.round((turnCompleteTime || now) - t0)
         const audioSec = Math.round((audioSamples / 24000) * 10) / 10
 
