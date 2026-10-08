@@ -231,6 +231,7 @@ export class Audio2FaceManager {
       const res = await response.json()
       if (res.ok && Array.isArray(res.weights) && res.weights.length > 0) {
         this._backendConsecutiveErrors = 0
+        this._lastBackendErrorTime = 0
         this._appendTimeline(res, speechStartTime)
       }
     } catch (err) {

@@ -855,6 +855,7 @@ export class Speech2MotionManager {
       }
 
       this._backendConsecutiveErrors = 0
+      this._lastBackendErrorTime = 0
       const track = this._parseMotionPayload(data)
       if (track && (isActionGesture || (motionKeywords && motionKeywords.length > 0))) {
         track.isActionGesture = true
