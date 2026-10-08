@@ -1272,6 +1272,8 @@ onMounted(async () => {
 
     system.value = sys
     window.vrmSystem = sys
+    window.testResponseLatency = sys.testResponseLatency?.bind(sys)
+    window.runLatencyBenchmark = sys.testResponseLatency?.bind(sys)
     cleanupSystem = sys.cleanup
     sys.setBackgroundColor(backgroundColor.value)
     sys.setLookAtOptions({

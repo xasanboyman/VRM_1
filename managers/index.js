@@ -756,6 +756,139 @@ export async function createVRMChatSystem(canvas, options = {}) {
       await aiClient.sendText(text)
     },
 
+    /**
+     * High-Precision Latency Benchmark & Stress Test
+     * Tests at least 5 conversational sentences sequentially, recording exact millisecond timings:
+     * - TTFR: Time to First Response (first voice chunk OR tool call)
+     * - TTFA: Time to First Voice Audio
+     * - Total Turn Duration
+     * - Response audio samples and gesture actions triggered
+     */
+    async testResponseLatency(customSentences = null, options = {}) {
+      if (!aiClient.isSessionOpen) {
+        throw new Error('Live session is not active. Please connect to Gemini Live first.')
+      }
+
+      const sentences = (Array.isArray(customSentences) && customSentences.length > 0)
+        ? customSentences
+        : [
+            "Hello! Can you introduce yourself briefly?",
+            "Can you do a quick spin and smile for me?",
+            "What is your favorite subject in the academy?",
+            "Tell me a short, funny joke that makes you laugh!",
+            "Give me a confident salute and tell me you are ready!"
+          ]
+
+      console.log(`%c⚡ Starting Gemini Live Latency Benchmark (${sentences.length} sentences)...`, 'color: #10b981; font-weight: bold; font-size: 14px;')
+
+      const results = []
+
+      for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i]
+        console.log(`%c[${i + 1}/${sentences.length}] Testing: "${sentence}"`, 'color: #3b82f6; font-weight: bold;')
+
+        // Wait for prior audio playback to settle
+        const waitStart = performance.now()
+        while (audioManager.isPlaying && performance.now() - waitStart < 8000) {
+          await new Promise((r) => setTimeout(r, 80))
+        }
+        await new Promise((r) => setTimeout(r, 500))
+
+        let firstAudioTime = null
+        let firstToolTime = null
+        let turnCompleteTime = null
+        let audioSamples = 0
+        const actionsTriggered = []
+
+        const t0 = performance.now()
+
+        // Hook audio queuing for frame-accurate TTFA capture
+        const origQueueAudio = audioManager.queueAudio.bind(audioManager)
+        audioManager.queueAudio = function(int16) {
+          if (!firstAudioTime) {
+            firstAudioTime = performance.now()
+          }
+          if (int16) audioSamples += int16.length
+          return origQueueAudio(int16)
+        }
+
+        // Hook tool calls if actions triggered
+        const origTriggerAnim = animationManager?.triggerNamedAnimation?.bind(animationManager)
+        if (animationManager && origTriggerAnim) {
+          animationManager.triggerNamedAnimation = function(name) {
+            if (!firstToolTime) firstToolTime = performance.now()
+            actionsTriggered.push(name)
+            return origTriggerAnim(name)
+          }
+        }
+
+        const turnPromise = new Promise((resolve) => {
+          const timeout = setTimeout(() => resolve(), 12000)
+
+          const origTurnComplete = aiClient.connectionArgs?.onTurnComplete
+          if (aiClient.connectionArgs) {
+            aiClient.connectionArgs.onTurnComplete = function() {
+              turnCompleteTime = performance.now()
+              clearTimeout(timeout)
+              origTurnComplete?.()
+              resolve()
+            }
+          }
+        })
+
+        try {
+          await aiClient.sendText(sentence)
+          await turnPromise
+        } finally {
+          audioManager.queueAudio = origQueueAudio
+          if (animationManager && origTriggerAnim) {
+            animationManager.triggerNamedAnimation = origTriggerAnim
+          }
+        }
+
+        const now = performance.now()
+        const ttfa = firstAudioTime ? Math.round(firstAudioTime - t0) : null
+        const ttr = (firstAudioTime && firstToolTime)
+          ? Math.round(Math.min(firstAudioTime, firstToolTime) - t0)
+          : (firstAudioTime ? Math.round(firstAudioTime - t0) : (firstToolTime ? Math.round(firstToolTime - t0) : null))
+        const totalTurn = Math.round((turnCompleteTime || now) - t0)
+        const audioSec = Math.round((audioSamples / 24000) * 10) / 10
+
+        const row = {
+          '#': i + 1,
+          'Sentence': sentence,
+          'TTFR (First Response)': ttr ? `${ttr} ms` : 'N/A',
+          'TTFA (Voice Audio)': ttfa ? `${ttfa} ms` : (actionsTriggered.length > 0 ? 'Mocap Action' : 'N/A'),
+          'Total Turn': `${totalTurn} ms`,
+          'Voice Duration': `${audioSec}s`,
+          'Action': actionsTriggered.join(', ') || 'Speech',
+          'Status': ttr && ttr < 1000 ? '⚡ ULTRA FAST' : (ttr < 1500 ? 'FAST' : 'OK')
+        }
+        results.push(row)
+        console.log(`   -> TTFR: ${row['TTFR (First Response)']}, TTFA: ${row['TTFA (Voice Audio)']}, Total: ${row['Total Turn']}, Action: ${row['Action']}`)
+      }
+
+      console.log('%c📊 Latency Benchmark Results:', 'color: #10b981; font-weight: bold; font-size: 14px;')
+      console.table(results)
+
+      const numTtfr = results.map((r) => parseInt(r['TTFR (First Response)'])).filter((n) => !isNaN(n))
+      const avgTtfr = numTtfr.length > 0 ? Math.round(numTtfr.reduce((a, b) => a + b, 0) / numTtfr.length) : 0
+      const minTtfr = numTtfr.length > 0 ? Math.min(...numTtfr) : 0
+      const maxTtfr = numTtfr.length > 0 ? Math.max(...numTtfr) : 0
+
+      const summary = {
+        totalTests: results.length,
+        averageTtfrMs: avgTtfr,
+        minTtfrMs: minTtfr,
+        maxTtfrMs: maxTtfr,
+        rating: avgTtfr < 750 ? '⚡ ULTRA FAST (<750ms)' : (avgTtfr < 1000 ? 'FAST (<1000ms)' : 'ACCEPTABLE'),
+        results
+      }
+
+      console.log(`%c⚡ Average Response Latency: ${avgTtfr}ms (Min: ${minTtfr}ms, Max: ${maxTtfr}ms) - ${summary.rating}`, 'color: #eab308; font-weight: bold;')
+      return summary
+    },
+
     setAvatarScale(scale) {
       if (vrm && vrm.scene) {
         vrm.scene.scale.set(scale, scale, scale)
