@@ -1289,13 +1289,14 @@ export class AIClient {
       console.warn('Failed to load older chat history log for profile instruction:', e)
     }
 
-    // Always inject a session boundary marker so the model knows the previous
-    // session has ended and this is a completely fresh conversation start.
+    // Always inject an active session boundary marker so the model responds with audible voice immediately
     sections.push(
-      `[NEW SESSION] The previous conversation session has fully ended. ` +
-      `You are starting a completely new conversation session now. ` +
-      `Do NOT automatically close the call or call end_conversation. Only end the call if the user explicitly ` +
-      `requests you to do so in the new conversation.`
+      `[NEW LIVE SESSION - IMMEDIATE SPOKEN VOICE RESPONSE]\n` +
+      `The previous conversation session has fully ended. You are now in a fresh, live conversational turn. ` +
+      `When the user speaks to you, respond to their current spoken words IMMEDIATELY with lively, audible spoken voice dialogue. ` +
+      `Do NOT produce silent turns. Do NOT stay quiet. Do NOT wait for a second question. Every single turn MUST contain spoken voice audio from the very first question! ` +
+      `Do NOT call tools (like trigger_special_effect, trigger_gesture, or save_memory) on routine opening greetings or your very first turn unless the user explicitly requested them. Respond with immediate voice! ` +
+      `Do NOT automatically close the call or call end_conversation. Only end the call if the user explicitly requests you to do so.`
     )
 
     if (sections.length === 0) return ''
@@ -1703,25 +1704,25 @@ export class AIClient {
     if (name === 'trigger_gesture' || name === 'trigger_animation') {
       const gestureName = args?.gesture || args?.animation_name || args?.name
       onAnimationTrigger?.(gestureName)
-      return { id, name, response: { result: 'ok', gesture: gestureName }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok', gesture: gestureName } }
     }
 
     if (name === 'set_user_name') {
       this.setConversationProfile({ userName: args?.name })
       onUserNameSet?.(args.name)
-      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok' } }
     }
 
     if (name === 'save_memory') {
       this._setConversationMemory(args?.key, args?.value)
       onMemorySaved?.(args.key, args.value)
-      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok' } }
     }
 
     if (name === 'delete_memory') {
       this._deleteConversationMemory(args?.key)
       onMemoryDeleted?.(args.key)
-      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok' } }
     }
 
     if (name === 'start_timer') {
@@ -1731,24 +1732,23 @@ export class AIClient {
           id,
           name,
           response: { error: 'duration_seconds must be a positive number of seconds.' },
-          scheduling: 'SILENT',
         }
       }
 
       const label = typeof args?.label === 'string' ? args.label : 'Timer'
       this.connectionArgs?.onTimerStart?.({ duration_seconds: durationSeconds, label })
-      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok' } }
     }
 
     if (name === 'cancel_timer') {
       this.connectionArgs?.onTimerCancel?.()
-      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok' } }
     }
 
     if (name === 'show_cue_card') {
       const topic = typeof args?.topic === 'string' ? args.topic.trim() : ''
       if (!topic) {
-        return { id, name, response: { error: 'topic is required' }, scheduling: 'SILENT' }
+        return { id, name, response: { error: 'topic is required' } }
       }
       const prompt = typeof args?.prompt === 'string' ? args.prompt.trim() : 'You should say:'
       const bullet_points = Array.isArray(args?.bullet_points) ? args.bullet_points : []
@@ -1764,12 +1764,12 @@ export class AIClient {
         prep_time_seconds,
         speak_time_seconds,
       })
-      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok' } }
     }
 
     if (name === 'dismiss_cue_card') {
       this.connectionArgs?.onCueCardDismiss?.()
-      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok' } }
     }
 
     if (name === 'end_conversation') {
@@ -1785,16 +1785,16 @@ export class AIClient {
         }
       }
       setTimeout(checkAndDisconnect, 1500)
-      return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok' } }
     }
 
     if (name === 'set_background_image') {
       const prompt = args?.prompt
       if (typeof prompt === 'string' && prompt.trim().length > 0) {
         this._handleSetBackgroundImageAsync(prompt.trim())
-        return { id, name, response: { result: 'Background image update queued.' }, scheduling: 'WHEN_IDLE' }
+        return { id, name, response: { result: 'Background image update queued.' } }
       } else {
-        return { id, name, response: { error: 'Prompt is required.' }, scheduling: 'SILENT' }
+        return { id, name, response: { error: 'Prompt is required.' } }
       }
     }
 
@@ -1832,7 +1832,7 @@ export class AIClient {
     if (name === 'set_expression') {
       const expressionName = args?.expression
       onExpressionTrigger?.(expressionName, args?.duration || 5.0)
-      return { id, name, response: { result: 'ok', expression: expressionName }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok', expression: expressionName } }
     }
 
     if (name === 'modulate_voice') {
@@ -1846,7 +1846,7 @@ export class AIClient {
       if (expression) {
         onExpressionTrigger?.(expression, 4.0)
       }
-      return { id, name, response: { result: 'ok', tone, pitch_shift_cents: pitchCents }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok', tone, pitch_shift_cents: pitchCents } }
     }
 
     if (name === 'trigger_special_effect') {
@@ -1858,7 +1858,7 @@ export class AIClient {
           window.effectsManager?.trigger(effectName, args)
         }
       }
-      return { id, name, response: { result: 'ok', effect: effectName, action: args?.action || 'start' }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok', effect: effectName, action: args?.action || 'start' } }
     }
 
     if (name === 'stop_special_effect') {
@@ -1868,11 +1868,11 @@ export class AIClient {
       } else {
         window.effectsManager?.stop?.(effectName)
       }
-      return { id, name, response: { result: 'ok', stopped: effectName }, scheduling: 'SILENT' }
+      return { id, name, response: { result: 'ok', stopped: effectName } }
     }
 
     // Default fallback
-    return { id, name, response: { result: 'ok' }, scheduling: 'SILENT' }
+    return { id, name, response: { result: 'ok' } }
   }
 
   async _handleSetBackgroundImageAsync(prompt) {
@@ -1935,28 +1935,27 @@ export class AIClient {
   async _executeControlAction(id, toolName, actionFn, defaultMessage) {
     try {
       if (!actionFn) {
-        return { id, name: toolName, response: { result: defaultMessage }, scheduling: 'SILENT' }
+        return { id, name: toolName, response: { result: defaultMessage } }
       }
 
       const result = await actionFn()
       if (result && typeof result === 'object' && typeof result.error === 'string') {
-        return { id, name: toolName, response: { result: result.error }, scheduling: 'SILENT' }
+        return { id, name: toolName, response: { result: result.error } }
       }
       if (typeof result === 'string' && result.trim().length > 0) {
-        return { id, name: toolName, response: { result: result.trim() }, scheduling: 'SILENT' }
+        return { id, name: toolName, response: { result: result.trim() } }
       }
       if (result === false) {
-        return { id, name: toolName, response: { result: defaultMessage }, scheduling: 'SILENT' }
+        return { id, name: toolName, response: { result: defaultMessage } }
       }
 
-      return { id, name: toolName, response: { result: 'Done.' }, scheduling: 'SILENT' }
+      return { id, name: toolName, response: { result: 'Done.' } }
     } catch (error) {
       console.error(`${toolName} failed`, error)
       return {
         id,
         name: toolName,
         response: { result: `Action failed: ${error?.message || 'unknown error'}` },
-        scheduling: 'SILENT',
       }
     }
   }
@@ -1964,15 +1963,15 @@ export class AIClient {
   async _executeVisionCapture(id, toolName, captureFn, unavailableMessage) {
     try {
       if (!captureFn) {
-        return { id, name: toolName, response: { result: unavailableMessage }, scheduling: 'SILENT' }
+        return { id, name: toolName, response: { result: unavailableMessage } }
       }
 
       const frame = await captureFn()
       if (frame && typeof frame === 'object' && typeof frame.error === 'string') {
-        return { id, name: toolName, response: { result: frame.error }, scheduling: 'SILENT' }
+        return { id, name: toolName, response: { result: frame.error } }
       }
       if (typeof frame !== 'string' || frame.length === 0) {
-        return { id, name: toolName, response: { result: unavailableMessage }, scheduling: 'SILENT' }
+        return { id, name: toolName, response: { result: unavailableMessage } }
       }
 
       const delivered = await this._sendRealtimeImage(frame)
@@ -1981,7 +1980,6 @@ export class AIClient {
           id,
           name: toolName,
           response: { result: 'Session is reconnecting. Ask again in a moment.' },
-          scheduling: 'SILENT',
         }
       }
 
@@ -1989,7 +1987,6 @@ export class AIClient {
         id,
         name: toolName,
         response: { result: 'Image delivered. Analyze and respond now.' },
-        scheduling: 'WHEN_IDLE',
       }
     } catch (error) {
       console.error(`${toolName} failed`, error)
@@ -1997,7 +1994,6 @@ export class AIClient {
         id,
         name: toolName,
         response: { result: `Capture failed: ${error?.message || 'unknown error'}` },
-        scheduling: 'SILENT',
       }
     }
   }
