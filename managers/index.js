@@ -869,7 +869,11 @@ export async function createVRMChatSystem(canvas, options = {}) {
           }
         })
 
+        const micWasRecording = aiClient.isRecording
         try {
+          if (micWasRecording) {
+            aiClient.stopMicrophone()
+          }
           await aiClient.sendText(sentence)
           await turnPromise
         } finally {
@@ -879,6 +883,9 @@ export async function createVRMChatSystem(canvas, options = {}) {
           }
           if (origHandleToolCall) {
             aiClient._handleToolCall = origHandleToolCall
+          }
+          if (micWasRecording) {
+            void aiClient.startMicrophone()
           }
         }
 
