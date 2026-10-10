@@ -18,6 +18,8 @@ export class AudioManager {
   audio2face = null
 
   speechStartTime = 0
+  speechTurnStartTime = 0
+  speechEndDebounceTimer = null
   totalScheduledDuration = 0
 
   // Multi-viseme current values
@@ -203,6 +205,12 @@ export class AudioManager {
       this.mouthReleaseRaf = null
     }
 
+    // Cancel pending inter-chunk end debounce since fresh streaming audio arrived
+    if (this.speechEndDebounceTimer) {
+      clearTimeout(this.speechEndDebounceTimer)
+      this.speechEndDebounceTimer = null
+    }
+
     const wasPlaying = this.isPlaying
     this.setPlaybackState(true)
 
@@ -228,18 +236,24 @@ export class AudioManager {
     source.connect(this.analyser)
 
     const now = this.audioCtx.currentTime
-    // Adaptive jitter buffer: 16ms lookahead on fresh speech, seamless 4ms recovery on minor packet jitter
+    // Adaptive jitter buffer: 16ms lookahead on fresh speech, seamless recovery on minor packet jitter
     if (this.nextStartTime < now) {
       const underrunSec = now - this.nextStartTime
-      if (this.isPlaying && underrunSec < 0.060) {
-        // Minor packet jitter during speech: recover immediately without audible gap
+      if (this.isPlaying && underrunSec < 0.350) {
+        // Inter-packet network streaming jitter: recover seamlessly without resetting speech turn timeline
         this.nextStartTime = now + 0.004
       } else {
-        // Fresh utterance start or large pause: snappy 14ms lookahead
+        // Fresh utterance start: snappy 14ms lookahead
         this.nextStartTime = now + 0.014
+        this.speechTurnStartTime = this.nextStartTime
         this.speechStartTime = this.nextStartTime
         this.totalScheduledDuration = 0
       }
+    }
+
+    if (!this.speechTurnStartTime) {
+      this.speechTurnStartTime = this.nextStartTime
+      this.speechStartTime = this.nextStartTime
     }
 
     source.start(this.nextStartTime)
@@ -251,12 +265,22 @@ export class AudioManager {
       this.activeSources = this.activeSources.filter((s) => s !== source)
       const hasPendingScheduled = this.audioCtx && (this.nextStartTime > (this.audioCtx.currentTime + 0.04))
       if (this.activeSources.length === 0 && !hasPendingScheduled) {
-        this.setPlaybackState(false)
-        this.stopMouthSync(this.currentVrm)
+        this._scheduleSpeechEndDebounced(350)
       }
     }
 
     if (this.currentVrm && !this.mouthRaf) this.startMouthSync(this.currentVrm)
+  }
+
+  _scheduleSpeechEndDebounced(delayMs = 350) {
+    if (this.speechEndDebounceTimer) return
+    this.speechEndDebounceTimer = setTimeout(() => {
+      this.speechEndDebounceTimer = null
+      if (this.activeSources.length === 0 && (!this.audioCtx || this.audioCtx.currentTime >= this.nextStartTime - 0.02)) {
+        this.stopMouthSync(this.currentVrm)
+        this.setPlaybackState(false)
+      }
+    }, delayMs)
   }
 
   startMouthSync(vrm) {
@@ -269,13 +293,14 @@ export class AudioManager {
         return
       }
 
-      if (this.audioCtx.currentTime > this.nextStartTime + 0.1) {
-        this.stopMouthSync(vrm)
-        this.setPlaybackState(false)
-        return
+      if (this.audioCtx.currentTime > this.nextStartTime + 0.04) {
+        if (!this.speechEndDebounceTimer && this.activeSources.length === 0) {
+          this._scheduleSpeechEndDebounced(350)
+        }
       }
 
-      const elapsed = Math.max(0, this.audioCtx.currentTime - this.speechStartTime)
+      const turnOrigin = this.speechTurnStartTime || this.speechStartTime || this.audioCtx.currentTime
+      const elapsed = Math.max(0, this.audioCtx.currentTime - turnOrigin)
       const progress = this.totalScheduledDuration > 0
         ? Math.min(1.0, elapsed / this.totalScheduledDuration)
         : 0
@@ -489,6 +514,11 @@ export class AudioManager {
   }
 
   interruptPlayback() {
+    if (this.speechEndDebounceTimer) {
+      clearTimeout(this.speechEndDebounceTimer)
+      this.speechEndDebounceTimer = null
+    }
+
     for (const source of this.activeSources) {
       try {
         source.onended = null
@@ -504,6 +534,9 @@ export class AudioManager {
     } else {
       this.nextStartTime = 0
     }
+
+    this.speechTurnStartTime = 0
+    this.speechStartTime = 0
 
     this.stopMouthSync(this.currentVrm || window.currentVrm || null)
     this.setPlaybackState(false)
@@ -599,8 +632,13 @@ export class AudioManager {
     if (nextIsPlaying) {
       this.onSpeechStart?.()
     } else {
+      if (this.speechEndDebounceTimer) {
+        clearTimeout(this.speechEndDebounceTimer)
+        this.speechEndDebounceTimer = null
+      }
       this.totalScheduledDuration = 0
       this.speechStartTime = 0
+      this.speechTurnStartTime = 0
       this.onAudioProgress?.({
         isPlaying: false,
         elapsed: 0,
