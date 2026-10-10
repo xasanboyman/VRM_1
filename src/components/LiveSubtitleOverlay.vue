@@ -125,15 +125,42 @@ const backgroundBoxClass = computed(() => {
   }
 })
 
-// Splits input text into discrete sentences with word tokens and audio weights
-const parseTextToSentences = (rawText) => {
-  const clean = String(rawText || '')
-    .replace(/set_expression\s*\([^)]*\)/gi, '')
-    .replace(/set_expression:[a-zA-Z0-9_]+/gi, '')
-    .replace(/expression:\s*[a-zA-Z0-9_]+/gi, '')
-    .replace(/\{[^{}]*"name"\s*:\s*"set_expression"[^{}]*(\{[^{}]*\})*[^{}]*\}/gi, '')
-    .replace(/\{"name"\s*:\s*"set_expression"[^}]*\}/gi, '')
+// Strips non-spoken command markers, asterisks, and tool invocation syntax
+const cleanRawText = (raw) => {
+  return String(raw || '')
+    .replace(/\*+[^*]+\*+/g, '') // remove *spins*, *smiles*
+    .replace(/\b(?:set_expression|trigger_gesture|trigger_special_effect|stop_special_effect|modulate_voice)\s*\([^)]*\)/gi, '')
+    .replace(/\b(?:set_expression|trigger_gesture|trigger_special_effect):[a-zA-Z0-9_]+/gi, '')
+    .replace(/\{[^{}]*"name"\s*:\s*"(?:set_expression|trigger_gesture|trigger_special_effect|stop_special_effect|modulate_voice)"[^{}]*(\{[^{}]*\})*[^{}]*\}/gi, '')
+    .replace(/\{"name"\s*:\s*"[^"]*"[^}]*\}/gi, '')
+    .replace(/\s{2,}/g, ' ')
     .trim()
+}
+
+// Estimates realistic spoken audio duration for a word (calibrated to Gemini Live Zephyr voice at ~165 WPM)
+const calculateWordDuration = (wordStr) => {
+  const cleanWord = wordStr.replace(/^[^\w\s]+|[^\w\s]+$/g, '')
+  const len = cleanWord.length || 1
+
+  // Base duration based on phoneme/character count:
+  // Short words ("I", "a", "to", "am"): ~0.24s - 0.28s
+  // Medium words ("hello", "today", "about"): ~0.32s - 0.38s
+  // Long words ("fantastic", "conversational"): ~0.50s - 0.65s
+  let dur = Math.max(0.24, Math.min(0.65, 0.18 + len * 0.038))
+
+  // Natural conversational pauses from punctuation:
+  if (/[,;:–—]$/.test(wordStr)) {
+    dur += 0.28 // comma breath pause
+  } else if (/[.!?…]+$/.test(wordStr)) {
+    dur += 0.45 // sentence termination pause
+  }
+
+  return dur
+}
+
+// Splits input text into discrete sentences with word tokens, spoken offsets, and timeline intervals
+const parseTextToSentences = (rawText) => {
+  const clean = cleanRawText(rawText)
   if (!clean) return []
 
   const rawSegments = []
@@ -150,33 +177,38 @@ const parseTextToSentences = (rawText) => {
     rawSegments.push(clean)
   }
 
-  let runningWeight = 0
+  let runningTurnSec = 0
   return rawSegments.map((sentenceText, sIdx) => {
     const rawWords = sentenceText.split(/\s+/).filter(Boolean)
+    let sentenceOffset = 0
+
     const words = rawWords.map((w, wIdx) => {
       const wordStr = String(w).trim()
-      let weight = Math.max(2, wordStr.length)
-      if (/[,;:]$/.test(wordStr)) weight += 2
-      if (/[.!?…]+$/.test(wordStr)) weight += 3
+      const duration = calculateWordDuration(wordStr)
+      const offset = sentenceOffset
+      sentenceOffset += duration
+
       return {
         id: `s${sIdx}_w${wIdx}_${wordStr}`,
         word: wordStr,
-        weight,
+        duration,
+        offset, // Spoken offset from sentence start in seconds
       }
     })
 
-    const sentenceWeight = words.reduce((acc, cur) => acc + cur.weight, 0)
-    const startWeight = runningWeight
-    runningWeight += sentenceWeight
-    const endWeight = runningWeight
+    // Sentence minimum duration: ensure at least 1.4s for natural speech cadence
+    const calculatedDuration = Math.max(1.4, sentenceOffset)
+    const startSec = runningTurnSec
+    runningTurnSec += calculatedDuration
+    const endSec = runningTurnSec
 
     return {
       index: sIdx,
       text: sentenceText,
       words,
-      weight: sentenceWeight,
-      startWeight,
-      endWeight,
+      duration: calculatedDuration,
+      startSec,
+      endSec,
     }
   })
 }
@@ -187,62 +219,56 @@ const activeDisplayWords = computed(() => {
   const sentences = parsedSentences.value
   if (!sentences.length) return []
 
-  const totalTurnWeight = sentences[sentences.length - 1]?.endWeight || 0
-  if (totalTurnWeight <= 0) return []
-
-  // If speaking is finished, display the full last spoken sentence
-  if (!props.isSpeaking || props.audioProgress?.progress >= 0.98) {
+  // If assistant finished speaking, hold and display the full last sentence on screen
+  if (!props.isSpeaking) {
     const lastSentence = sentences[sentences.length - 1]
     return lastSentence?.words || []
   }
 
-  const rawProgress = Math.max(0, Math.min(1, props.audioProgress?.progress ?? 0))
-  const currentTurnPos = rawProgress * totalTurnWeight
+  const elapsed = Math.max(0, props.audioProgress?.elapsed ?? 0)
 
-  // Find the single sentence active in the current audio timeline
-  let activeSentence = sentences[sentences.length - 1]
+  // Find the single active sentence strictly synchronized with audio playback time:
+  // Each sentence waits for its complete spoken duration before advancing to the next sentence!
+  let activeIndex = sentences.length - 1
   for (let i = 0; i < sentences.length; i++) {
-    if (currentTurnPos < sentences[i].endWeight || i === sentences.length - 1) {
-      activeSentence = sentences[i]
+    if (elapsed < sentences[i].endSec) {
+      activeIndex = i
       break
     }
   }
 
+  const activeSentence = sentences[activeIndex]
   if (!activeSentence || !activeSentence.words.length) return []
 
   const words = activeSentence.words
 
-  // Short sentences (<= 3 words) show completely right away so user reads immediately
-  if (words.length <= 3) {
+  // Short sentences (<= 4 words) display completely right away for immediate reading
+  if (words.length <= 4) {
     return words
   }
 
-  // Calculate progress within this specific sentence
-  const sentenceDuration = activeSentence.endWeight - activeSentence.startWeight
-  const localPos = Math.max(0, currentTurnPos - activeSentence.startWeight)
-  const baseRatio = sentenceDuration > 0 ? Math.min(1, localPos / sentenceDuration) : 1
+  // Real-time playback time within this specific sentence
+  const sentenceElapsed = Math.max(0, elapsed - activeSentence.startSec)
 
-  // Anticipatory lead offset: words appear ahead of time so they're visible naturally as spoken
-  let leadAhead = 0.12 // default fast (~300ms natural reading lead)
-  if (props.speed === 'snappy') leadAhead = 0.20
-  if (props.speed === 'standard') leadAhead = 0.05
+  // Anticipatory reading lead time: text appears ~1 second earlier as AI speaks
+  // (User options: fast = 1.0s lead, snappy = 1.4s lead, standard = 0.6s lead)
+  let leadAheadSec = 1.0
+  if (props.speed === 'snappy') leadAheadSec = 1.4
+  if (props.speed === 'standard') leadAheadSec = 0.6
 
-  const effectiveRatio = Math.min(1, baseRatio + leadAhead)
+  const effectiveReadingTime = sentenceElapsed + leadAheadSec
 
-  // Start with at least 1 word visible at onset of sentence
-  let visibleCount = Math.min(words.length, 1)
-  let accumulated = 0
+  // At sentence onset, reveal at least 3 words (or 40% of sentence) so user has immediate context
+  const initialWordCount = Math.max(3, Math.min(words.length, Math.ceil(words.length * 0.4)))
+  let visibleCount = initialWordCount
 
   for (let i = 0; i < words.length; i++) {
-    const wordShare = words[i].weight / activeSentence.weight
-    accumulated += wordShare
-    // Reveal word proactively ahead of time
-    if (effectiveRatio >= accumulated - wordShare * 0.9) {
-      visibleCount = i + 1
+    if (effectiveReadingTime >= words[i].offset) {
+      visibleCount = Math.max(visibleCount, i + 1)
     }
   }
 
-  return words.slice(0, Math.max(2, Math.min(words.length, visibleCount)))
+  return words.slice(0, Math.min(words.length, visibleCount))
 })
 
 const clearFadeTimer = () => {
