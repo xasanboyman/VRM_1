@@ -28,8 +28,8 @@ export class AudioManager {
     oh: 0,
     ou: 0,
   }
-  // Pitch modulation in cents (-1200 to +1200, 100 cents = 1 semitone)
-  pitchShiftCents = (typeof localStorage !== 'undefined' ? Number(localStorage.getItem('vrm_pitch_shift_cents')) : 0) || 0
+  // Pitch modulation in cents (strictly 0 for pure 1:1 bit-perfect neural audio)
+  pitchShiftCents = 0
 
   timeDomainDataArray = null
   frequencyDataArray = null
@@ -47,18 +47,26 @@ export class AudioManager {
     this.analyser.fftSize = 512
     this.analyser.smoothingTimeConstant = 0.35
 
-    // Broadcast-quality dynamics compressor / peak limiter to prevent clipping spikes
+    // Broadcast-quality transparent dynamics compressor / peak limiter to prevent clipping spikes
     this.compressor = this.audioCtx.createDynamicsCompressor()
-    this.compressor.threshold.value = -6
-    this.compressor.knee.value = 8
-    this.compressor.ratio.value = 3.5
-    this.compressor.attack.value = 0.003
-    this.compressor.release.value = 0.12
+    this.compressor.threshold.value = -3
+    this.compressor.knee.value = 6
+    this.compressor.ratio.value = 2.5
+    this.compressor.attack.value = 0.005
+    this.compressor.release.value = 0.15
 
     this.analyser.connect(this.compressor)
     this.compressor.connect(this.audioCtx.destination)
     this.timeDomainDataArray = new Uint8Array(this.analyser.frequencyBinCount)
     this.frequencyDataArray = new Uint8Array(this.analyser.frequencyBinCount)
+
+    // Reset legacy pitch shift in localStorage to prevent varispeed audio stuttering
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('vrm_pitch_shift_cents', '0')
+      } catch {}
+    }
+
     if (!this.audio2face) {
       this.audio2face = new Audio2FaceManager(this.currentVrm || window.currentVrm)
     }
@@ -118,11 +126,6 @@ export class AudioManager {
 
     const source = this.audioCtx.createBufferSource()
     source.buffer = audioBuffer
-    if (this.pitchShiftCents) {
-      try {
-        source.detune.value = this.pitchShiftCents
-      } catch {}
-    }
     source.connect(this.analyser)
 
     const now = this.audioCtx.currentTime
@@ -180,15 +183,10 @@ export class AudioManager {
   }
 
   setPitchShiftCents(cents) {
-    this.pitchShiftCents = Math.max(-1200, Math.min(1200, Number(cents) || 0))
+    this.pitchShiftCents = 0
     if (typeof localStorage !== 'undefined') {
       try {
-        localStorage.setItem('vrm_pitch_shift_cents', String(this.pitchShiftCents))
-      } catch {}
-    }
-    for (const src of this.activeSources) {
-      try {
-        src.detune.value = this.pitchShiftCents
+        localStorage.setItem('vrm_pitch_shift_cents', '0')
       } catch {}
     }
   }
@@ -205,6 +203,7 @@ export class AudioManager {
       this.mouthReleaseRaf = null
     }
 
+    const wasPlaying = this.isPlaying
     this.setPlaybackState(true)
 
     const float32Data = new Float32Array(int16Data.length)
@@ -212,13 +211,12 @@ export class AudioManager {
       float32Data[i] = int16Data[i] / 32768.0
     }
 
-    // Micro-fade (1.5ms / 36 samples) to eliminate boundary seam clicks
-    const fadeSamples = Math.min(36, Math.floor(float32Data.length / 4))
-    if (fadeSamples > 0) {
-      for (let i = 0; i < fadeSamples; i++) {
-        const ramp = i / fadeSamples
-        float32Data[i] *= ramp
-        float32Data[float32Data.length - 1 - i] *= ramp
+    // Microscopic ramp-in (16 samples / 0.6ms) ONLY at cold speech onset after silence to prevent DC pop.
+    // Crucially, never ramp down the tail of intermediate chunks, preserving contiguous, crystal-clear vowels.
+    if (!wasPlaying && float32Data.length >= 16) {
+      const onsetFade = Math.min(16, Math.floor(float32Data.length / 8))
+      for (let i = 0; i < onsetFade; i++) {
+        float32Data[i] *= (i / onsetFade)
       }
     }
 
@@ -227,15 +225,10 @@ export class AudioManager {
 
     const source = this.audioCtx.createBufferSource()
     source.buffer = audioBuffer
-    if (this.pitchShiftCents) {
-      try {
-        source.detune.value = this.pitchShiftCents
-      } catch {}
-    }
     source.connect(this.analyser)
 
     const now = this.audioCtx.currentTime
-    // Adaptive jitter buffer: 28ms lookahead on fresh speech, seamless 4ms recovery on minor packet jitter
+    // Adaptive jitter buffer: 16ms lookahead on fresh speech, seamless 4ms recovery on minor packet jitter
     if (this.nextStartTime < now) {
       const underrunSec = now - this.nextStartTime
       if (this.isPlaying && underrunSec < 0.060) {

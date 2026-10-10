@@ -322,10 +322,19 @@ const backgroundColor = ref(
 const lookAtUserEnabled = ref(localStorage.getItem('vrm_look_at_user') !== 'false')
 const lookAtScreenEnabled = ref(localStorage.getItem('vrm_look_at_screen') !== 'false')
 const selectedLanguage = ref(resolveLanguage(localStorage.getItem(UI_LANGUAGE_STORAGE_KEY) || 'en'))
-const selectedVoice = ref(localStorage.getItem('vrm_selected_voice') || 'Zephyr')
-const pitchShiftCents = ref(
-  (typeof localStorage !== 'undefined' ? Number(localStorage.getItem('vrm_pitch_shift_cents')) : 0) || 0,
-)
+const rawStoredVoice = typeof localStorage !== 'undefined' ? localStorage.getItem('vrm_selected_voice') : null
+const selectedVoice = ref((rawStoredVoice && rawStoredVoice !== 'Zephyr') ? rawStoredVoice : 'Kore')
+if (typeof localStorage !== 'undefined') {
+  try {
+    if (!rawStoredVoice || rawStoredVoice === 'Zephyr') {
+      localStorage.setItem('vrm_selected_voice', 'Kore')
+    }
+    if (localStorage.getItem('vrm_pitch_shift_cents') !== '0') {
+      localStorage.setItem('vrm_pitch_shift_cents', '0')
+    }
+  } catch {}
+}
+const pitchShiftCents = ref(0)
 const t = (key, params = {}) => translateUi(selectedLanguage.value, key, params)
 const languageLabelKeyByCode = Object.freeze({
   en: 'aiLanguage.english',
