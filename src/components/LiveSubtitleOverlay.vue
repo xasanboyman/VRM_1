@@ -177,8 +177,21 @@ const parseTextToSentences = (rawText) => {
     rawSegments.push(clean)
   }
 
+  // Merge tiny fragments (<= 2 words, e.g. "Hello!", "Yes!", "Of course!") with the subsequent sentence
+  // so subtitles display coherent, natural thoughts and never flicker on 1-word salutations
+  const normalizedSegments = []
+  for (let i = 0; i < rawSegments.length; i++) {
+    const seg = rawSegments[i]
+    const wordCount = seg.split(/\s+/).filter(Boolean).length
+    if (wordCount <= 2 && i + 1 < rawSegments.length) {
+      rawSegments[i + 1] = `${seg} ${rawSegments[i + 1]}`
+    } else {
+      normalizedSegments.push(seg)
+    }
+  }
+
   let runningTurnSec = 0
-  return rawSegments.map((sentenceText, sIdx) => {
+  return normalizedSegments.map((sentenceText, sIdx) => {
     const rawWords = sentenceText.split(/\s+/).filter(Boolean)
     let sentenceOffset = 0
 
