@@ -323,11 +323,11 @@ const lookAtUserEnabled = ref(localStorage.getItem('vrm_look_at_user') !== 'fals
 const lookAtScreenEnabled = ref(localStorage.getItem('vrm_look_at_screen') !== 'false')
 const selectedLanguage = ref(resolveLanguage(localStorage.getItem(UI_LANGUAGE_STORAGE_KEY) || 'en'))
 const rawStoredVoice = typeof localStorage !== 'undefined' ? localStorage.getItem('vrm_selected_voice') : null
-const selectedVoice = ref((rawStoredVoice && rawStoredVoice !== 'Zephyr') ? rawStoredVoice : 'Kore')
+const selectedVoice = ref((rawStoredVoice && rawStoredVoice !== 'Kore') ? rawStoredVoice : 'Zephyr')
 if (typeof localStorage !== 'undefined') {
   try {
-    if (!rawStoredVoice || rawStoredVoice === 'Zephyr') {
-      localStorage.setItem('vrm_selected_voice', 'Kore')
+    if (!rawStoredVoice || rawStoredVoice === 'Kore') {
+      localStorage.setItem('vrm_selected_voice', 'Zephyr')
     }
     if (localStorage.getItem('vrm_pitch_shift_cents') !== '0') {
       localStorage.setItem('vrm_pitch_shift_cents', '0')

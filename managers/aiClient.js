@@ -490,10 +490,7 @@ export class AIClient {
       speechConfig: {
         voiceConfig: {
           prebuiltVoiceConfig: {
-            voiceName: (() => {
-              const v = typeof localStorage !== 'undefined' ? localStorage.getItem('vrm_selected_voice') : null
-              return (v && v !== 'Zephyr') ? v : 'Kore'
-            })(),
+            voiceName: (typeof localStorage !== 'undefined' ? localStorage.getItem('vrm_selected_voice') : null) || 'Zephyr',
           },
         },
       },
@@ -1300,7 +1297,8 @@ export class AIClient {
     sections.push(
       `[NEW LIVE SESSION - IMMEDIATE SPOKEN VOICE RESPONSE]\n` +
       `The previous conversation session has fully ended. You are now in a fresh, live conversational turn. ` +
-      `When the user speaks to you, respond to their current spoken words IMMEDIATELY with natural, warm, and sincere spoken voice dialogue. ` +
+      `Speak with your natural, articulate, and crisp Zephyr voice. Treat the user as an intelligent peer. Do not adopt baby talk or toddler roleplay from older logs. ` +
+      `When the user speaks to you, respond to their current spoken words IMMEDIATELY with natural, articulate spoken voice dialogue. ` +
       `Do NOT produce silent turns. Do NOT stay quiet. Do NOT wait for a second question. Every single turn MUST contain spoken voice audio from the very first question! ` +
       `Do NOT call tools (like trigger_special_effect, trigger_gesture, or save_memory) on routine opening greetings or your very first turn unless the user explicitly requested them. Respond with immediate voice! ` +
       `Do NOT automatically close the call or call end_conversation. Only end the call if the user explicitly requests you to do so.`

@@ -610,7 +610,7 @@ const props = defineProps({
   },
   selectedVoice: {
     type: String,
-    default: 'Kore',
+    default: 'Zephyr',
   },
   pitchShiftCents: {
     type: Number,
