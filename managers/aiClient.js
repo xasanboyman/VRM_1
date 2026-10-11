@@ -481,10 +481,10 @@ export class AIClient {
       realtimeInputConfig: {
         automaticActivityDetection: {
           disabled: false,
-          startOfSpeechSensitivity: 'START_SENSITIVITY_BALANCED',
-          endOfSpeechSensitivity: 'END_SENSITIVITY_BALANCED',
+          startOfSpeechSensitivity: 'START_SENSITIVITY_LOW',
+          endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
           prefixPaddingMs: 40,
-          silenceDurationMs: 500,
+          silenceDurationMs: 600,
         },
       },
       speechConfig: {
