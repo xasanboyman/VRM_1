@@ -1,21 +1,22 @@
 <template>
   <Transition name="subtitle-fade">
     <div
-      v-if="visible && activeDisplayWords.length > 0"
-      class="live-subtitle-container pointer-events-none fixed left-1/2 z-30 w-[min(92vw,820px)] -translate-x-1/2 select-none px-4 flex justify-center"
+      v-if="visible && currentSentence"
+      class="live-subtitle-container pointer-events-none fixed left-1/2 z-30 w-[min(92vw,860px)] -translate-x-1/2 select-none px-4 flex justify-center"
       :class="positionClass"
     >
       <div
-        class="live-subtitle-bubble w-full px-4 py-2 transition-all duration-150 text-left"
+        class="live-subtitle-bubble w-full px-5 py-3 transition-all duration-200 text-center"
         :class="[stylePresetClass, backgroundBoxClass]"
       >
-        <p class="subtitle-text text-left leading-snug tracking-wide break-words" :class="sizeClass">
+        <p class="subtitle-text text-center leading-snug tracking-wide break-words" :class="sizeClass">
           <span
-            v-for="(item, idx) in activeDisplayWords"
+            v-for="(item, idx) in currentSentence.words"
             :key="item.id"
-            class="subtitle-word inline-block opacity-100"
+            class="subtitle-word inline-block transition-opacity duration-150"
+            :class="idx <= activeWordIndex ? 'opacity-100' : 'opacity-70'"
           >
-            {{ item.word }}<span v-if="idx < activeDisplayWords.length - 1">&nbsp;</span>
+            {{ item.word }}<span v-if="idx < currentSentence.words.length - 1">&nbsp;</span>
           </span>
         </p>
       </div>
@@ -226,22 +227,21 @@ const parseTextToSentences = (rawText) => {
   })
 }
 
-// Computes which words are currently visible for the active sentence with anticipatory lead
-const activeDisplayWords = computed(() => {
-  if (!props.enabled || !visible.value) return []
+// Computes the active sentence strictly synchronized with audio playback time:
+// Each sentence waits for its complete spoken duration before advancing to the next sentence!
+const currentSentence = computed(() => {
+  if (!props.enabled || !visible.value) return null
   const sentences = parsedSentences.value
-  if (!sentences.length) return []
+  if (!sentences.length) return null
 
   // If assistant finished speaking, hold and display the full last sentence on screen
   if (!props.isSpeaking) {
-    const lastSentence = sentences[sentences.length - 1]
-    return lastSentence?.words || []
+    return sentences[sentences.length - 1] || null
   }
 
   const elapsed = Math.max(0, props.audioProgress?.elapsed ?? 0)
 
-  // Find the single active sentence strictly synchronized with audio playback time:
-  // Each sentence waits for its complete spoken duration before advancing to the next sentence!
+  // Find the single active sentence: stays on screen until audio finishes its endSec
   let activeIndex = sentences.length - 1
   for (let i = 0; i < sentences.length; i++) {
     if (elapsed < sentences[i].endSec) {
@@ -250,20 +250,19 @@ const activeDisplayWords = computed(() => {
     }
   }
 
-  const activeSentence = sentences[activeIndex]
-  if (!activeSentence || !activeSentence.words.length) return []
+  return sentences[activeIndex] || null
+})
 
-  const words = activeSentence.words
+// Computes the active word highlight index within the active sentence with 1.0s anticipatory lead
+const activeWordIndex = computed(() => {
+  const sentence = currentSentence.value
+  if (!sentence || !sentence.words.length) return -1
+  if (!props.isSpeaking) return sentence.words.length - 1
 
-  // Short sentences (<= 4 words) display completely right away for immediate reading
-  if (words.length <= 4) {
-    return words
-  }
+  const elapsed = Math.max(0, props.audioProgress?.elapsed ?? 0)
+  const sentenceElapsed = Math.max(0, elapsed - sentence.startSec)
 
-  // Real-time playback time within this specific sentence
-  const sentenceElapsed = Math.max(0, elapsed - activeSentence.startSec)
-
-  // Anticipatory reading lead time: text appears ~1 second earlier as AI speaks
+  // Anticipatory reading lead time: highlight appears ~1 second ahead of spoken audio
   // (User options: fast = 1.0s lead, snappy = 1.4s lead, standard = 0.6s lead)
   let leadAheadSec = 1.0
   if (props.speed === 'snappy') leadAheadSec = 1.4
@@ -271,17 +270,14 @@ const activeDisplayWords = computed(() => {
 
   const effectiveReadingTime = sentenceElapsed + leadAheadSec
 
-  // At sentence onset, reveal at least 3 words (or 40% of sentence) so user has immediate context
-  const initialWordCount = Math.max(3, Math.min(words.length, Math.ceil(words.length * 0.4)))
-  let visibleCount = initialWordCount
-
-  for (let i = 0; i < words.length; i++) {
-    if (effectiveReadingTime >= words[i].offset) {
-      visibleCount = Math.max(visibleCount, i + 1)
+  let currentIdx = 0
+  for (let i = 0; i < sentence.words.length; i++) {
+    if (effectiveReadingTime >= sentence.words[i].offset) {
+      currentIdx = i
     }
   }
 
-  return words.slice(0, Math.min(words.length, visibleCount))
+  return currentIdx
 })
 
 const clearFadeTimer = () => {

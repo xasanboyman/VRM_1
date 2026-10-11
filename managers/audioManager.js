@@ -49,16 +49,8 @@ export class AudioManager {
     this.analyser.fftSize = 512
     this.analyser.smoothingTimeConstant = 0.35
 
-    // Broadcast-quality transparent dynamics compressor / peak limiter to prevent clipping spikes
-    this.compressor = this.audioCtx.createDynamicsCompressor()
-    this.compressor.threshold.value = -3
-    this.compressor.knee.value = 6
-    this.compressor.ratio.value = 2.5
-    this.compressor.attack.value = 0.005
-    this.compressor.release.value = 0.15
-
-    this.analyser.connect(this.compressor)
-    this.compressor.connect(this.audioCtx.destination)
+    // Pure bit-perfect transparent studio acoustics directly to destination
+    this.analyser.connect(this.audioCtx.destination)
     this.timeDomainDataArray = new Uint8Array(this.analyser.frequencyBinCount)
     this.frequencyDataArray = new Uint8Array(this.analyser.frequencyBinCount)
 

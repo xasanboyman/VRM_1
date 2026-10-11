@@ -481,10 +481,10 @@ export class AIClient {
       realtimeInputConfig: {
         automaticActivityDetection: {
           disabled: false,
-          startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
-          endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
-          prefixPaddingMs: 20,
-          silenceDurationMs: 200,
+          startOfSpeechSensitivity: 'START_SENSITIVITY_BALANCED',
+          endOfSpeechSensitivity: 'END_SENSITIVITY_BALANCED',
+          prefixPaddingMs: 40,
+          silenceDurationMs: 500,
         },
       },
       speechConfig: {
@@ -2226,6 +2226,14 @@ export class AIClient {
     return result
   }
 
+  _isAssistantSpeaking() {
+    const audioManager = window.vrmSystem?.audioManager || window.vrmAudioManager
+    return Boolean(
+      audioManager &&
+      (audioManager.isPlaying || (audioManager.activeSources && audioManager.activeSources.length > 0))
+    )
+  }
+
   _flushInputBuffer() {
     if (this.inputBufferIndex <= 0) return
 
@@ -2241,6 +2249,23 @@ export class AIClient {
     }
     const chunkRms = Math.sqrt(sumSq / audioChunk.length)
     const now = Date.now()
+    const isAssistantSpeaking = this._isAssistantSpeaking()
+
+    // Acoustic Echo Protection:
+    // When the assistant is speaking out of speakers, ignore speaker bleed so Gemini Live does not hear its own echo
+    if (isAssistantSpeaking) {
+      if (chunkRms >= 0.08) {
+        this._bargeInCount = (this._bargeInCount || 0) + 1
+        if (this._bargeInCount >= 3) {
+          const audioManager = window.vrmSystem?.audioManager || window.vrmAudioManager
+          audioManager?.interruptPlayback()
+          this._bargeInCount = 0
+        }
+      } else {
+        this._bargeInCount = 0
+        return
+      }
+    }
 
     if (chunkRms >= this._clientSpeechThreshold) {
       this._speechOnsetCount = Math.min(10, (this._speechOnsetCount || 0) + 1)
@@ -2264,10 +2289,11 @@ export class AIClient {
         this._clientVadSpeaking = false
         this._speechOnsetCount = 0
 
-        // Send audioStreamEnd only once per confirmed speech turn with cooldown guard
+        // Send audioStreamEnd only once per confirmed speech turn, and NEVER while assistant is speaking
         if (
           this._hasConfirmedSpeechTurn &&
           !this._hasSentAudioStreamEndForCurrentTurn &&
+          !this._isAssistantSpeaking() &&
           now - (this._lastAudioStreamEndTime || 0) >= 1000 &&
           this.activeSession &&
           this.isSessionOpen &&
