@@ -195,6 +195,7 @@
       @toggle-subtitles="subtitlesEnabled = !subtitlesEnabled"
       @toggle-settings="toggleSettingsPanel"
       @file-upload="loadVRMFile"
+      @download-study-notes="handleDownloadStudyNotes"
     />
 
     <TransitionGroup
@@ -1553,6 +1554,21 @@ const proceedToConnect = async () => {
           )
         },
         getHistory: () => chatHistory.value,
+        onExportStudyDocument: (result) => {
+          if (result?.success) {
+            showToast(
+              t('toasts.studyDocumentDownloaded'),
+              t('toasts.studyDocumentDownloadedDesc', {
+                filename: result.filename,
+                count: result.itemCount || 0,
+              }),
+              'success',
+            )
+          }
+        },
+        onStudyItemSaved: (item) => {
+          console.log('Study note saved:', item)
+        },
       },
       '',
       true,
@@ -1575,6 +1591,33 @@ const proceedToConnect = async () => {
     isConnected.value = false
   } finally {
     isConnecting.value = false
+  }
+}
+
+const handleDownloadStudyNotes = async () => {
+  const mgr = system.value?.studyDocumentManager || window.studyDocumentManager
+  if (!mgr) {
+    showToast(t('toasts.errorTitle'), 'Study document manager not ready', 'error')
+    return
+  }
+  try {
+    const res = await mgr.generateAndDownloadDocx({
+      history: chatHistory.value,
+      candidateName: (localStorage.getItem('vrm_user_name') || '').trim() || 'Candidate',
+    })
+    if (res?.success) {
+      showToast(
+        t('toasts.studyDocumentDownloaded'),
+        t('toasts.studyDocumentDownloadedDesc', {
+          filename: res.filename,
+          count: res.itemCount || 0,
+        }),
+        'success',
+      )
+    }
+  } catch (err) {
+    console.error('Failed to generate study document:', err)
+    showToast(t('toasts.errorTitle'), err.message || 'Failed to download study document', 'error')
   }
 }
 

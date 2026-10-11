@@ -105,6 +105,19 @@
         >
       </button>
 
+      <!-- Download Study Notes Word Document (.docx) -->
+      <button
+        class="dock-btn group relative flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-white/40 transition-all hover:bg-white/10 hover:text-emerald-400"
+        :title="translate('dock.exportNotesTitle')"
+        @click="$emit('download-study-notes')"
+      >
+        <DocumentArrowDownIcon class="h-5 w-5" />
+        <span
+          class="absolute -top-10 left-1/2 -translate-x-1/2 rounded bg-black/90 px-2 py-1 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100 whitespace-nowrap"
+          >{{ translate('dock.exportNotes') }}</span
+        >
+      </button>
+
       <!-- Settings Panel Toggle -->
       <button
         class="dock-btn group relative flex h-10 w-10 items-center justify-center rounded-xl transition-all"
@@ -134,6 +147,7 @@ import {
   ChatBubbleLeftRightIcon,
   Cog6ToothIcon,
   ComputerDesktopIcon,
+  DocumentArrowDownIcon,
   MicrophoneIcon,
   PhoneXMarkIcon,
 } from '@heroicons/vue/24/solid'
@@ -169,6 +183,7 @@ const emit = defineEmits([
   'toggle-subtitles',
   'toggle-settings',
   'file-upload',
+  'download-study-notes',
 ])
 
 const fileInputRef = ref(null)

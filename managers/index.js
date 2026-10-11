@@ -10,6 +10,7 @@ import { VisionManager } from './visionManager.js'
 import { TelegramManager } from './telegramManager.js'
 import { cacheManager } from './cacheManager.js'
 import { FillerManager } from './fillerManager.js'
+import { StudyDocumentManager } from './studyDocumentManager.js'
 import { buildAiLanguagePreferenceInstruction, resolveLanguage } from '../src/i18n/ui.js'
 
 export async function createVRMChatSystem(canvas, options = {}) {
@@ -46,6 +47,8 @@ export async function createVRMChatSystem(canvas, options = {}) {
   window.vrmAudioManager = audioManager
   const fillerManager = new FillerManager({ audioManager })
   window.fillerManager = fillerManager
+  const studyDocumentManager = new StudyDocumentManager()
+  window.studyDocumentManager = studyDocumentManager
   const speechManager = new SpeechManager()
   const visionManager = new VisionManager()
   const telegramManager = new TelegramManager(telegramSettings)
@@ -198,6 +201,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
     speechManager,
     aiClient,
     fillerManager,
+    studyDocumentManager,
     animationManager,
     specialEffectsManager,
     effectsManager: specialEffectsManager,
@@ -360,7 +364,8 @@ export async function createVRMChatSystem(canvas, options = {}) {
         'TOOL CALLING RULES: ' +
         '1. Visual effects (trigger_special_effect) and body gestures (trigger_gesture): ONLY call these tools when the user EXPLICITLY asks for an effect or gesture in their question (e.g., "show cherry blossoms", "do a dance", "show sparkles"). NEVER call visual effect tools spontaneously or on routine conversational turns! ' +
         '2. Available effects when requested: sakura (cherry blossoms), hearts, sparkles, tears, sweat, steam, exclamation, question, zzz, music_notes, gloom, speed_lines. For sakura, you can stop it with stop_special_effect(effect: "sakura") when the user asks. ' +
-        '3. IMMEDIATE SPOKEN VOICE: Every single turn MUST contain your natural spoken voice audio. Always respond to the user immediately with voice dialogue from the very first question. Never produce silent turns.'
+        '3. IMMEDIATE SPOKEN VOICE: Every single turn MUST contain your natural spoken voice audio. Always respond to the user immediately with voice dialogue from the very first question. Never produce silent turns. ' +
+        '4. WORD DOCUMENT EXPORT (export_study_document): When the user asks for their errors, improvements, vocabulary, or mistakes as a file (e.g., "give me those words as file", "download my errors", "save my mistakes into a word file", "give me my notes"), you MUST IMMEDIATELY call the "export_study_document" tool! Pass any recent mistakes, corrections, and vocabulary items with example sentences so it generates and downloads a Microsoft Word (.docx) document straight to their computer, while warmly letting them know with your spoken voice that their notes file is downloading.'
 
       let pendingTurnGesture = null
       const triggerAnimation = (animName) => {
@@ -587,6 +592,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
       systemPrompt += ` ${compactGlobalAnimationCommand}`
       systemPrompt += ` ${buildAiLanguagePreferenceInstruction(normalizedPreferredLanguage)}`
       systemPrompt += ' ACTIVE MEMORY RULE: You must automatically persist key facts about the user (e.g. user gender, age, language preferences, interests, job, names of pets/friends/family, and important life facts they share) to the memory matrix using the "save_memory" tool. Whenever they reveal a key fact, call save_memory(key, value) while continuing your spoken dialogue naturally. Never ask for permission to remember these facts.'
+      systemPrompt += ' STUDY NOTES & DOCUMENT EXPORT RULE: Whenever the user asks for their errors, corrections, words, or study notes as a file (e.g. "give me those words as file", "download my errors", "save my mistakes in a word file", "export notes"), you MUST call the "export_study_document" tool with the mistakes, corrections, and example sentences so a Word (.docx) document is immediately generated and downloaded to their PC. Speak a warm response confirming the download.'
       systemPrompt += ' END CONVERSATION RULE: If you wish to say goodbye and end the conversation, or if the user asks you to disconnect or end the call, you must immediately call the "end_conversation" tool to cleanly close the session.'
 
       if (lookAtOptions.user && lookAtOptions.screen) {
@@ -735,6 +741,8 @@ export async function createVRMChatSystem(canvas, options = {}) {
           cancelPendingUtterance?.()
           animationManager?.setSpeakingState(false)
         },
+        callbacks?.onExportStudyDocument,
+        callbacks?.onStudyItemSaved,
       )
     },
 

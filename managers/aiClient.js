@@ -271,6 +271,8 @@ export class AIClient {
     onCueCardDismiss = null,
     onTurnComplete = null,
     onInterrupted = null,
+    onExportStudyDocument = null,
+    onStudyItemSaved = null,
   ) {
     if (this.activeSession) return
 
@@ -323,6 +325,8 @@ export class AIClient {
         onCueCardDismiss: typeof onCueCardDismiss === 'function' ? onCueCardDismiss : null,
         onTurnComplete: typeof onTurnComplete === 'function' ? onTurnComplete : null,
         onInterrupted: typeof onInterrupted === 'function' ? onInterrupted : null,
+        onExportStudyDocument: typeof onExportStudyDocument === 'function' ? onExportStudyDocument : null,
+        onStudyItemSaved: typeof onStudyItemSaved === 'function' ? onStudyItemSaved : null,
       }
 
       await this._establishConnection()
@@ -1771,8 +1775,48 @@ export class AIClient {
       return { id, name, response: { result: 'ok' } }
     }
 
-    if (name === 'dismiss_cue_card') {
-      this.connectionArgs?.onCueCardDismiss?.()
+    if (name === 'export_study_document' || name === 'download_study_document') {
+      try {
+        const mgr = window.studyDocumentManager || window.vrmSystem?.studyDocumentManager
+        if (mgr) {
+          const res = await mgr.generateAndDownloadDocx({
+            title: args?.title,
+            summary: args?.summary,
+            items: args?.items,
+            overallFeedback: args?.overall_feedback,
+            history: this.connectionArgs?.getHistory?.(),
+          })
+          this.connectionArgs?.onExportStudyDocument?.(res)
+          return {
+            id,
+            name,
+            response: {
+              result: 'ok',
+              message: 'Word document has been generated and downloaded to your PC.',
+              filename: res.filename,
+              itemCount: res.itemCount,
+            },
+          }
+        } else {
+          return { id, name, response: { error: 'StudyDocumentManager not initialized' } }
+        }
+      } catch (err) {
+        console.error('Failed to export study document:', err)
+        return { id, name, response: { error: err.message } }
+      }
+    }
+
+    if (name === 'save_study_item') {
+      try {
+        const mgr = window.studyDocumentManager || window.vrmSystem?.studyDocumentManager
+        if (mgr) {
+          const item = mgr.saveItem(args)
+          this.connectionArgs?.onStudyItemSaved?.(item)
+          return { id, name, response: { result: 'ok', item } }
+        }
+      } catch (err) {
+        console.warn('Failed to save study item:', err)
+      }
       return { id, name, response: { result: 'ok' } }
     }
 
@@ -2637,6 +2681,91 @@ export class AIClient {
           {
             name: 'dismiss_cue_card',
             description: 'Dismiss and hide the active IELTS Speaking cue card widget.',
+          },
+          {
+            name: 'export_study_document',
+            description:
+              'Generate a professionally formatted Microsoft Word (.docx) study document containing the user\'s grammar mistakes, speech error corrections, vocabulary upgrades, and native example sentences from the session, and automatically download it to the user\'s PC. Call this immediately whenever the user asks for their errors, vocabulary, or study notes as a file or Word document (e.g. "give me those words as a file", "download my mistakes", "save our notes to Word", "export study notes").',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                title: {
+                  type: 'STRING',
+                  description: 'Document title, e.g. "IELTS Speaking Study Notes & Vocabulary"',
+                },
+                summary: {
+                  type: 'STRING',
+                  description: 'Brief overall summary of speaking performance and areas for improvement.',
+                },
+                items: {
+                  type: 'ARRAY',
+                  description: 'List of specific speech errors, grammar corrections, vocabulary upgrades, or idioms discussed.',
+                  items: {
+                    type: 'OBJECT',
+                    properties: {
+                      type: {
+                        type: 'STRING',
+                        description: 'Category: "grammar_correction", "vocabulary", "idiom", or "pronunciation".',
+                      },
+                      original: {
+                        type: 'STRING',
+                        description: 'User\'s original mistake or simpler expression.',
+                      },
+                      improved: {
+                        type: 'STRING',
+                        description: 'Accurate correction or advanced C1-C2 vocabulary alternative.',
+                      },
+                      explanation: {
+                        type: 'STRING',
+                        description: 'Grammar rule, explanation, or nuance.',
+                      },
+                      examples: {
+                        type: 'ARRAY',
+                        items: { type: 'STRING' },
+                        description: 'Contextual example sentences illustrating proper usage.',
+                      },
+                    },
+                    required: ['improved'],
+                  },
+                },
+                overall_feedback: {
+                  type: 'STRING',
+                  description: 'Concluding feedback and recommendations for the student.',
+                },
+              },
+            },
+          },
+          {
+            name: 'save_study_item',
+            description:
+              'Record a specific grammar error, speech correction, or vocabulary word into the student\'s study notebook during conversation so it can later be exported into their Word document.',
+            parameters: {
+              type: 'OBJECT',
+              properties: {
+                type: {
+                  type: 'STRING',
+                  description: '"grammar_correction", "vocabulary", or "idiom".',
+                },
+                original: {
+                  type: 'STRING',
+                  description: 'The user\'s original phrasing or mistake.',
+                },
+                improved: {
+                  type: 'STRING',
+                  description: 'Corrected or high-scoring alternative.',
+                },
+                explanation: {
+                  type: 'STRING',
+                  description: 'Grammar rule or explanation.',
+                },
+                examples: {
+                  type: 'ARRAY',
+                  items: { type: 'STRING' },
+                  description: 'Example sentences.',
+                },
+              },
+              required: ['improved'],
+            },
           },
           {
             name: 'end_conversation',
