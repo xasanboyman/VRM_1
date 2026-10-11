@@ -2288,24 +2288,7 @@ export class AIClient {
       if (this._clientVadSpeaking && now - this._lastClientSpeechTime >= this._clientSilenceDurationMs) {
         this._clientVadSpeaking = false
         this._speechOnsetCount = 0
-
-        // Send audioStreamEnd only once per confirmed speech turn, and NEVER while assistant is speaking
-        if (
-          this._hasConfirmedSpeechTurn &&
-          !this._hasSentAudioStreamEndForCurrentTurn &&
-          !this._isAssistantSpeaking() &&
-          now - (this._lastAudioStreamEndTime || 0) >= 1000 &&
-          this.activeSession &&
-          this.isSessionOpen &&
-          !this.isDisconnecting
-        ) {
-          this._hasSentAudioStreamEndForCurrentTurn = true
-          this._hasConfirmedSpeechTurn = false
-          this._lastAudioStreamEndTime = now
-          console.log('⚡ Hybrid VAD: Client silence threshold reached -> sending audioStreamEnd')
-          void this.sendAudioStreamEnd()
-        }
-
+        this._hasConfirmedSpeechTurn = false
         this._setUserSpeakingState(false)
       }
     }
