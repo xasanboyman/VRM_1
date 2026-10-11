@@ -68,6 +68,8 @@ const props = defineProps({
 
 const visible = ref(false)
 const parsedSentences = ref([])
+const hasSpokenInCurrentTurn = ref(false)
+const turnEnded = ref(false)
 let autoFadeTimeout = null
 let lastRawText = ''
 
@@ -228,36 +230,51 @@ const parseTextToSentences = (rawText) => {
 }
 
 // Computes the active sentence strictly synchronized with audio playback time:
-// Each sentence waits for its complete spoken duration before advancing to the next sentence!
+// 1. Appears ~1 sec earlier as AI speaks (Sentence 0 shows immediately when text arrives).
+// 2. Waits for the active sentence to be completely finished speaking before advancing to the next sentence!
+// 3. Holds the final sentence on screen for 3.5s after speech completes before fading out.
 const currentSentence = computed(() => {
   if (!props.enabled || !visible.value) return null
   const sentences = parsedSentences.value
   if (!sentences.length) return null
 
-  // If assistant finished speaking, hold and display the full last sentence on screen
-  if (!props.isSpeaking) {
+  // If the turn has fully completed speaking, hold and display the final sentence until fadeout
+  if (turnEnded.value) {
     return sentences[sentences.length - 1] || null
   }
 
+  // If speech hasn't started yet, display Sentence 0 immediately so the user has an anticipatory reading lead
+  if (!props.isSpeaking && !hasSpokenInCurrentTurn.value) {
+    return sentences[0] || null
+  }
+
+  // While speech is playing (or between streaming audio chunks of the active turn):
   const elapsed = Math.max(0, props.audioProgress?.elapsed ?? 0)
 
-  // Find the single active sentence: stays on screen until audio finishes its endSec
-  let activeIndex = sentences.length - 1
+  // Find the active sentence: stay on sentence[i] until its spoken audio finishes!
+  let activeIndex = 0
   for (let i = 0; i < sentences.length; i++) {
     if (elapsed < sentences[i].endSec) {
       activeIndex = i
       break
     }
+    if (i === sentences.length - 1) {
+      activeIndex = i
+    }
   }
 
-  return sentences[activeIndex] || null
+  return sentences[activeIndex] || sentences[0] || null
 })
 
 // Computes the active word highlight index within the active sentence with 1.0s anticipatory lead
 const activeWordIndex = computed(() => {
   const sentence = currentSentence.value
   if (!sentence || !sentence.words.length) return -1
-  if (!props.isSpeaking) return sentence.words.length - 1
+
+  // If turn is fully completed, keep all words in the final sentence highlighted during post-speech hold
+  if (turnEnded.value) {
+    return sentence.words.length - 1
+  }
 
   const elapsed = Math.max(0, props.audioProgress?.elapsed ?? 0)
   const sentenceElapsed = Math.max(0, elapsed - sentence.startSec)
@@ -305,15 +322,20 @@ watch(
 
     const trimmed = String(newText || '').trim()
     if (!trimmed) {
-      if (!props.isSpeaking) {
+      if (!props.isSpeaking && hasSpokenInCurrentTurn.value) {
         scheduleFadeOut(800)
       }
       return
     }
 
-    // Reset if text was truncated or new turn started
+    // Reset if text was cleared, truncated, or a brand new turn started
     if (trimmed.length < lastRawText.length && !lastRawText.startsWith(trimmed)) {
       parsedSentences.value = []
+      hasSpokenInCurrentTurn.value = false
+      turnEnded.value = false
+    } else if (!lastRawText && trimmed) {
+      hasSpokenInCurrentTurn.value = false
+      turnEnded.value = false
     }
     lastRawText = trimmed
 
@@ -321,7 +343,7 @@ watch(
     visible.value = true
     clearFadeTimer()
 
-    if (!props.isSpeaking) {
+    if (turnEnded.value) {
       scheduleFadeOut(3500)
     }
   },
@@ -333,13 +355,14 @@ watch(
   () => props.isSpeaking,
   (speaking) => {
     if (speaking) {
+      hasSpokenInCurrentTurn.value = true
+      turnEnded.value = false
       visible.value = true
       clearFadeTimer()
     } else {
-      if (parsedSentences.value.length > 0) {
+      if (hasSpokenInCurrentTurn.value && parsedSentences.value.length > 0) {
+        turnEnded.value = true
         scheduleFadeOut(3500)
-      } else {
-        visible.value = false
       }
     }
   },

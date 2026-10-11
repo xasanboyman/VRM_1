@@ -233,7 +233,7 @@ export class AudioManager {
       const underrunSec = now - this.nextStartTime
       if (this.isPlaying && underrunSec < 0.350) {
         // Inter-packet network streaming jitter: recover seamlessly without resetting speech turn timeline
-        this.nextStartTime = now + 0.004
+        this.nextStartTime = now + 0.010
       } else {
         // Fresh utterance start: snappy 14ms lookahead
         this.nextStartTime = now + 0.014
