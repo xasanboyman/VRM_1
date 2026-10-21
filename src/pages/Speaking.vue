@@ -1570,7 +1570,7 @@ const proceedToConnect = async () => {
           console.log('Study note saved:', item)
         },
       },
-      '',
+      "[SYSTEM EVENT: The conversation has begun. Greet the user immediately with spoken voice: 'Assalomu alaykum!' in Uzbek language and introduce yourself warmly.]",
       true,
       localStorage.getItem('vrm_user_name'),
       {

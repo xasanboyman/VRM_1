@@ -16,6 +16,12 @@ export class VRMLoader {
       console.warn('VRMLoader: Empty path provided')
       return null
     }
+
+    // Rewrite GitHub blob URLs to direct raw content URLs for valid binary download
+    if (typeof path === 'string' && path.includes('github.com/') && path.includes('/blob/')) {
+      path = path.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/')
+    }
+
     try {
       // 1. Bypass and delete stale cache for local models so updates always load
       let buffer = null
@@ -34,6 +40,17 @@ export class VRMLoader {
         }
       }
 
+      // Check if buffer is actually a binary glTF (starts with glTF magic "glTF" / 0x46546C67)
+      if (buffer) {
+        const uint8 = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 8))
+        const magic = String.fromCharCode(...uint8.slice(0, 4))
+        if (magic !== 'glTF') {
+          console.warn('VRMLoader: Cached data is corrupt or not glTF, clearing cache for:', path)
+          await cacheManager.deleteCached('models', path).catch(() => {})
+          buffer = null
+        }
+      }
+
       if (buffer) {
         const gltf = await this.loader.parseAsync(buffer, path)
         const vrm = gltf.userData.vrm
@@ -48,6 +65,13 @@ export class VRMLoader {
       if (!response.ok) throw new Error(`Failed to fetch ${path}`)
 
       const arrayBuffer = await response.arrayBuffer()
+
+      // Validate downloaded binary before caching
+      const uint8 = new Uint8Array(arrayBuffer, 0, Math.min(arrayBuffer.byteLength, 8))
+      const magic = String.fromCharCode(...uint8.slice(0, 4))
+      if (magic !== 'glTF') {
+        throw new Error(`Downloaded content for ${path} is not a valid glTF/VRM file`)
+      }
 
       // 3. Store in Cache (only for non-local models or if not disabled)
       if (!path.startsWith('/models/')) {

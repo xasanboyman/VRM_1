@@ -1375,8 +1375,8 @@ export class Speech2MotionManager {
     this._isPrewarmingGestures = true
 
     // Top priority action gestures:
-    // 742: salute, 762: wave, 836: spin, 851: shrug, 862: nod, 871: thinking, 870: cheer, 838: peace
-    const priorityRecordIds = [742, 762, 836, 851, 862, 871, 870, 838]
+    // 886: uzbek_salom, 742: salute, 762: wave, 836: spin, 851: shrug, 862: nod, 871: thinking, 870: cheer, 838: peace
+    const priorityRecordIds = [886, 742, 762, 836, 851, 862, 871, 870, 838]
     const uncached = priorityRecordIds.filter((id) => !this.recordTrackCache.has(id))
     if (uncached.length === 0) {
       this._isPrewarmingGestures = false

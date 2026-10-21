@@ -175,6 +175,12 @@ const ANIMATION_ALIASES = {
   disagreement: 'shake_head',
   no: 'shake_head',
   // greeting & respect
+  salom: 'uzbek_salom',
+  uzbek_salom: 'uzbek_salom',
+  uzbeksalom: 'uzbek_salom',
+  assalom: 'uzbek_salom',
+  assalomu_alaykum: 'uzbek_salom',
+  assalomu_aleykum: 'uzbek_salom',
   hello: 'wave',
   hi: 'wave',
   bow: 'bow',
@@ -978,7 +984,7 @@ export class AnimationManager {
     this.backgroundLoadPromise = (async () => {
       // Priority conversational gestures preloaded in background for instantaneous playback
       const priorityNames = [
-        'Salute', 'Waving', 'Joy', 'Nod', 'ShakeHead', 'Shrugging',
+        'UzbekSalom', 'Salute', 'Waving', 'Joy', 'Nod', 'ShakeHead', 'Shrugging',
         'HandsOnHips', 'MacarenaDance', 'HipHopDance', 'Cheering',
         'Clapping', 'Bow', 'Thinking', 'ThumbsUp', 'HeartFingers',
         'BlowKiss', 'Facepalm', 'Explaining', 'Excitement', 'Surprise',
@@ -1974,6 +1980,36 @@ export class AnimationManager {
     if (typeof name !== 'string' || !name.trim()) return
     const rawName = name.trim()
     const lowerName = rawName.toLowerCase().replace(/[\s-]+/g, '_')
+
+    // Handle traditional Uzbek Salom greeting with top priority for exact visual fidelity
+    if (
+      lowerName === 'uzbek_salom' ||
+      lowerName === 'uzbeksalom' ||
+      lowerName === 'salom' ||
+      lowerName === 'assalom' ||
+      lowerName === 'assalomu_alaykum' ||
+      lowerName === 'assalomu_aleykum'
+    ) {
+      if (this.speech2motion && this.speech2motion.enabled) {
+        this.speech2motion.triggerGesture('uzbek_salom').catch(() => {})
+      }
+      if (this.actions['UzbekSalom']) {
+        this.play('UzbekSalom', { fade: this.fadeTimings.gestureIn })
+        return this.actions['UzbekSalom']
+      }
+      const item = LOCAL_ANIMATION_FILES.find((f) => f.name === 'UzbekSalom')
+      if (item) {
+        try {
+          await this.loadAnimationFile(item)
+          if (this.actions['UzbekSalom']) {
+            this.play('UzbekSalom', { fade: this.fadeTimings.gestureIn })
+            return this.actions['UzbekSalom']
+          }
+        } catch (e) {
+          console.warn('Failed to load UzbekSalom clip:', e)
+        }
+      }
+    }
 
     if (this.speech2motion && this.speech2motion.enabled) {
       try {

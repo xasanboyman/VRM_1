@@ -89,14 +89,17 @@ export async function createVRMChatSystem(canvas, options = {}) {
     telegramManager.notifyLog(eventMessage, context).catch(() => {})
   }
 
-  // Strategy: Try local uzbek traditional student model first, then local student.vrm, then Ani, then remote fallback.
+  // Primary Strategy: Strict Uzbek Traditional Student default model.
+  // Attempts local /models/uzbek_traditional_student.vrm first, then local student.vrm,
+  // then directly fetches raw binary from GitHub repository.
   const localModelPath = '/models/uzbek_traditional_student.vrm'
   const fallbackLocalPath = '/models/student.vrm'
-  const fallbackAniPath = '/models/Ani.vrm'
   const remoteModelUrl =
     'https://raw.githubusercontent.com/xasanboyman/VRM_1/main/public/models/uzbek_traditional_student.vrm'
+  const githubBlobUrl =
+    'https://github.com/xasanboyman/VRM_1/blob/main/public/models/uzbek_traditional_student.vrm'
 
-  reportLoad(52, 'Loading Avatar', 'Trying local model asset')
+  reportLoad(52, 'Loading Avatar', 'Loading Uzbek student avatar')
 
   try {
     try {
@@ -106,10 +109,10 @@ export async function createVRMChatSystem(canvas, options = {}) {
         vrm = await vrmLoader.loadVRMFromPath(fallbackLocalPath)
       } catch {
         try {
-          vrm = await vrmLoader.loadVRMFromPath(fallbackAniPath)
-        } catch {
-          reportLoad(60, 'Loading Avatar', 'Local model unavailable, trying remote source')
+          reportLoad(60, 'Loading Avatar', 'Fetching avatar from GitHub repository')
           vrm = await vrmLoader.loadVRMFromPath(remoteModelUrl)
+        } catch {
+          vrm = await vrmLoader.loadVRMFromPath(githubBlobUrl)
         }
       }
     }
@@ -130,7 +133,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
       }
       fillerManager.setAnimationManager(animationManager)
       await animationManager.initialize({
-        initialAnimations: ['NeutralIdle'],
+        initialAnimations: ['NeutralIdle', 'UzbekSalom'],
         loadRemainingInBackground: true,
         onProgress: ({ current, total, name }) => {
           const ratio = total > 0 ? current / total : 1
@@ -730,9 +733,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
         handleTranscriptionWithAnimation,
         safeHistory,
         initialMessage ||
-          (safeHistory.length === 0
-            ? "[SYSTEM EVENT: Session connected. Greet the user immediately with spoken voice: 'Assalomu alaykum!' in Uzbek language and introduce yourself warmly.]"
-            : ''),
+          "[SYSTEM EVENT: Session connected. Greet the user immediately with spoken voice: 'Assalomu alaykum!' in Uzbek language and introduce yourself warmly.]",
         enableMic,
         handleUserSpeechStateChange,
         callbacks?.getHistory,
