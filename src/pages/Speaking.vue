@@ -322,7 +322,7 @@ const backgroundColor = ref(
 )
 const lookAtUserEnabled = ref(localStorage.getItem('vrm_look_at_user') !== 'false')
 const lookAtScreenEnabled = ref(localStorage.getItem('vrm_look_at_screen') !== 'false')
-const selectedLanguage = ref(resolveLanguage(localStorage.getItem(UI_LANGUAGE_STORAGE_KEY) || 'en'))
+const selectedLanguage = ref(resolveLanguage(localStorage.getItem(UI_LANGUAGE_STORAGE_KEY) || 'uz'))
 const rawStoredVoice = typeof localStorage !== 'undefined' ? localStorage.getItem('vrm_selected_voice') : null
 const selectedVoice = ref((rawStoredVoice && rawStoredVoice !== 'Kore') ? rawStoredVoice : 'Zephyr')
 if (typeof localStorage !== 'undefined') {
@@ -381,8 +381,8 @@ const BUILTIN_PERSONA_ID_SET = new Set(Object.values(BUILTIN_PERSONA_IDS))
 const BUILTIN_PERSONA_LOCALIZED = Object.freeze({
   en: {
     default: {
-      title: 'Default Riko',
-      description: 'Original Riko personality used by the app.',
+      title: 'Default Student',
+      description: 'Traditional student personality used by the app.',
       prompt: '',
     },
     mentor: {
@@ -406,8 +406,8 @@ const BUILTIN_PERSONA_LOCALIZED = Object.freeze({
   },
   uz: {
     default: {
-      title: 'Standart Riko',
-      description: 'Ilovadagi asl Riko personasi.',
+      title: 'Standart Talaba',
+      description: 'Ilovadagi milliy talaba personasi.',
       prompt: '',
     },
     mentor: {
@@ -433,8 +433,8 @@ const BUILTIN_PERSONA_LOCALIZED = Object.freeze({
   },
   ru: {
     default: {
-      title: 'Riko по умолчанию',
-      description: 'Оригинальная персона Riko, используемая в приложении.',
+      title: 'Студент по умолчанию',
+      description: 'Традиционная персона студента, используемая в приложении.',
       prompt: '',
     },
     mentor: {
@@ -1584,6 +1584,8 @@ const proceedToConnect = async () => {
     )
 
     isConnected.value = true
+    // Immediate traditional Uzbek greeting animation at the start of conversation
+    system.value?.animationManager?.triggerNamedAnimation?.('uzbek_salom')
   } catch (error) {
     console.error(error)
     trackReconnectIssue()
@@ -1805,7 +1807,7 @@ const handleModelSwitch = async (modelKey) => {
 
   // If undefined/null, it means "Default"
   if (!modelKey) {
-    await loadVRMFile({ name: 'Default', url: '/models/Ani.vrm' }, true)
+    await loadVRMFile({ name: 'Default', url: '/models/uzbek_traditional_student.vrm' }, true)
     selectedModelKey.value = null
     localStorage.removeItem('vrm_selected_model_key')
     return

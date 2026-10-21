@@ -70,6 +70,7 @@ export function extractSpeechTimingAndKeywords(speechText, duration, excludeKeyw
   // 2. Keyword pattern matching for expressive human mocap motions and full-body emotions
   const keywordPatterns = [
     { regex: /\b(spin(?:s|ning)?(?:\s*360|\s*degrees?)?|sping(?:\s*360)?|turn\s*around|rotate[sd]?|twirl(?:s|ed|ing)?)\b/gi, keyword: '转圈' },
+    { regex: /\b(assalomu\s*a[ly]ey?kum|salom|assalom|salomatsizmi|uzbek_salom)\b/gi, keyword: 'uzbek_salom' },
     { regex: /\b(as\s+you\s+insist|all\s+right\s+all\s+right|if\s+you\s+insist|shrug(?:s|ged|ging)?)\b/gi, keyword: '摊手' },
     { regex: /\b(wave[sd]?|waving|greeting[s]?|hello|bye|goodbye|hi)\b/gi, keyword: '打招呼' },
     { regex: /\b(clap(?:s|ped|ping)?|applause)\b/gi, keyword: '鼓掌' },
@@ -395,6 +396,12 @@ export class Speech2MotionManager {
 
     // Motion keyword dictionary for interactive gestures
     this.gestureKeywordMap = {
+      uzbek_salom: 'uzbek_salom',
+      uzbeksalom: 'uzbek_salom',
+      salom: 'uzbek_salom',
+      assalom: 'uzbek_salom',
+      assalomu_alaykum: 'uzbek_salom',
+      assalomu_aleykum: 'uzbek_salom',
       wave: '打招呼',
       greeting: '打招呼',
       hello: '打招呼',
@@ -457,6 +464,14 @@ export class Speech2MotionManager {
 
     // Direct verified motion record ID mappings from Oracle database (motion_database.db)
     this.gestureRecordMap = {
+      uzbek_salom: 886,
+      uzbeksalom: 886,
+      salom: 886,
+      assalom: 886,
+      assalomu_alaykum: 886,
+      assalomu_aleykum: 886,
+      'uzbek_salom': 886,
+
       salute: 742,
       saluting: 742,
       attention: 742,

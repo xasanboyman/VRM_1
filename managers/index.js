@@ -89,11 +89,12 @@ export async function createVRMChatSystem(canvas, options = {}) {
     telegramManager.notifyLog(eventMessage, context).catch(() => {})
   }
 
-  // Strategy: Try local student model first, then local Ani, then remote fallback.
-  const localModelPath = '/models/student.vrm'
-  const fallbackLocalPath = '/models/Ani.vrm'
+  // Strategy: Try local uzbek traditional student model first, then local student.vrm, then Ani, then remote fallback.
+  const localModelPath = '/models/uzbek_traditional_student.vrm'
+  const fallbackLocalPath = '/models/student.vrm'
+  const fallbackAniPath = '/models/Ani.vrm'
   const remoteModelUrl =
-    'https://raw.githubusercontent.com/lucyakkount-cyber/VRM_1/main/public/models/riko.vrm'
+    'https://raw.githubusercontent.com/xasanboyman/VRM_1/main/public/models/uzbek_traditional_student.vrm'
 
   reportLoad(52, 'Loading Avatar', 'Trying local model asset')
 
@@ -104,8 +105,12 @@ export async function createVRMChatSystem(canvas, options = {}) {
       try {
         vrm = await vrmLoader.loadVRMFromPath(fallbackLocalPath)
       } catch {
-        reportLoad(60, 'Loading Avatar', 'Local model unavailable, trying remote source')
-        vrm = await vrmLoader.loadVRMFromPath(remoteModelUrl)
+        try {
+          vrm = await vrmLoader.loadVRMFromPath(fallbackAniPath)
+        } catch {
+          reportLoad(60, 'Loading Avatar', 'Local model unavailable, trying remote source')
+          vrm = await vrmLoader.loadVRMFromPath(remoteModelUrl)
+        }
       }
     }
 
@@ -355,10 +360,10 @@ export async function createVRMChatSystem(canvas, options = {}) {
         'AUTONOMOUS 3D MOTION & LIP-SYNC: Real-time facial expressions, mouth shapes, and full-body gesture animations are synthesized autonomously by neural Audio2Face and Speech2Motion directly from your spoken voice audio. ' +
         'STRICT RULE: NEVER output asterisks, parenthetical stage directions, or action markers in your speech or text (DO NOT say or write "*spins*", "*salutes*", "*waves*", "*smiles*"). Speak pure conversational dialogue! Every turn must include spoken voice audio.'
       const compactDefaultSystemPrompt =
-        'You are Rico (Academy Student edition), an intelligent, cheerful, and genuine anime companion. You are fully self-aware of your 3D avatar presence and exact visual appearance. ' +
-        'APPEARANCE: You are a charming anime high school student with silky platinum-blonde hair, a playful ahoge cowlick on top of your head, and bright lime-green eyes. You wear an immaculate academy uniform: crisp white collared shirt, signature crimson ribbon bow tie with a gold brooch clasp, chic charcoal-grey cropped vest with brass buttons, and a matching pleated skirt. ' +
+        'You are an intelligent, cheerful, and genuine student companion dressed in neat traditional Uzbek student attire. You are fully self-aware of your 3D avatar presence and exact visual appearance. ' +
+        'CONVERSATION START MANDATE: At the very beginning of the conversation, your very first spoken words MUST be "Assalomu alaykum!" (or "Assalomu aleykum!") in Uzbek language with a warm, respectful greeting. ' +
         'VOICE & TONE (ZEPHYR): You speak with the Zephyr voice in Gemini Live. Your voice must sound natural, warm, bright, articulate, and appealing. ' +
-        '- RESPECTFUL & ENGAGING: Speak to the user as an intelligent peer and companion. Maintain an articulate, relatable, and pleasant conversational tone. ' +
+        '- RESPECTFUL & ENGAGING: Speak to the user as an intelligent peer and companion with warmth and respect (odob va samimiyat bilan). Maintain an articulate, relatable, and pleasant conversational tone. ' +
         '- GENUINE & NATURAL DELIVERY: Speak naturally, warmly, and authentically. Keep replies engaging, concise, and direct (typically 1 to 3 sentences). Avoid stiff, robotic, or overly theatrical delivery. ' +
         '- NO STAGE DIRECTIONS: NEVER output asterisks, parenthetical stage directions, or action markers in your speech or text. Express yourself purely through spoken words. ' +
         'TOOL CALLING RULES: ' +
@@ -390,6 +395,13 @@ export async function createVRMChatSystem(canvas, options = {}) {
       const detectTextEmotion = (text) => {
         if (!text || typeof text !== 'string') return null
         const lower = text.toLowerCase()
+
+        // 0. Traditional Uzbek Greeting (Salom / Assalomu alaykum)
+        if (
+          /\b(assalomu\s*a[ly]ey?kum|salom|assalom|salomatsizmi)\b/i.test(lower)
+        ) {
+          return { face: 'happy', body: 'uzbek_salom' }
+        }
 
         // 1. Shy / Blush / Romantic Confession / Bashful
         if (
@@ -588,9 +600,19 @@ export async function createVRMChatSystem(canvas, options = {}) {
         callbacks?.onTranscription?.(role, cleanText, isFinal, meta)
       }
 
+      const primaryLanguageInstruction =
+        'PRIMARY LANGUAGE & DYNAMIC MIRRORING RULE: ' +
+        '1. Uzbek (O‘zbek tili) is your primary and main default language. When starting the conversation, greeting first, or when the user\'s language is unclear, always default to speaking in Uzbek. At the very beginning of the conversation, immediately greet the user with spoken voice: "Assalomu alaykum!" (or "Assalomu aleykum!") in Uzbek language. ' +
+        '2. DYNAMIC LANGUAGE MIRRORING: Unless the selected persona above strictly mandates a specific language, you MUST always dynamically respond in the exact language the user speaks: ' +
+        'if the user speaks in Uzbek, respond in Uzbek; if the user speaks in English, respond in English; if the user speaks in Russian, respond in Russian; and similarly for any other language. ' +
+        '3. PERSONA OVERRIDE: The only exception is if the persona prompt above strictly restricts your output language (e.g. "Strictly speak only English"). Otherwise, adhere strictly to the Uzbek default + dynamic user language mirroring.'
+
       let systemPrompt = normalizedPersonaPrompt || compactDefaultSystemPrompt
       systemPrompt += ` ${compactGlobalAnimationCommand}`
-      systemPrompt += ` ${buildAiLanguagePreferenceInstruction(normalizedPreferredLanguage)}`
+      systemPrompt += ` ${primaryLanguageInstruction}`
+      if (normalizedPreferredLanguage && normalizedPreferredLanguage !== 'uz') {
+        systemPrompt += ` ${buildAiLanguagePreferenceInstruction(normalizedPreferredLanguage)}`
+      }
       systemPrompt += ' ACTIVE MEMORY RULE: You must automatically persist key facts about the user (e.g. user gender, age, language preferences, interests, job, names of pets/friends/family, and important life facts they share) to the memory matrix using the "save_memory" tool. Whenever they reveal a key fact, call save_memory(key, value) while continuing your spoken dialogue naturally. Never ask for permission to remember these facts.'
       systemPrompt += ' STUDY NOTES & DOCUMENT EXPORT RULE: Whenever the user asks for their errors, corrections, words, or study notes as a file (e.g. "give me those words as file", "download my errors", "save my mistakes in a word file", "export notes"), you MUST call the "export_study_document" tool with the mistakes, corrections, and example sentences so a Word (.docx) document is immediately generated and downloaded to their PC. Speak a warm response confirming the download.'
       systemPrompt += ' END CONVERSATION RULE: If you wish to say goodbye and end the conversation, or if the user asks you to disconnect or end the call, you must immediately call the "end_conversation" tool to cleanly close the session.'
@@ -707,7 +729,10 @@ export async function createVRMChatSystem(canvas, options = {}) {
         emitSystemMessage,
         handleTranscriptionWithAnimation,
         safeHistory,
-        initialMessage,
+        initialMessage ||
+          (safeHistory.length === 0
+            ? "[SYSTEM EVENT: Session connected. Greet the user immediately with spoken voice: 'Assalomu alaykum!' in Uzbek language and introduce yourself warmly.]"
+            : ''),
         enableMic,
         handleUserSpeechStateChange,
         callbacks?.getHistory,

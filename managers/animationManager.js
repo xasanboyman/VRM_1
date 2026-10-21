@@ -117,6 +117,7 @@ export const LOCAL_ANIMATION_FILES = [
   { name: 'Taunt', file: 'Taunt Gesture.vrma', isLoop: false },
   { name: 'Thinking', file: 'Thinking.vrma', isLoop: false },
   { name: 'ThumbsUp', file: 'ThumbsUp.vrma', isLoop: false },
+  { name: 'UzbekSalom', file: 'uzbek_salom.vrma', isLoop: false },
   { name: 'Waving', file: 'Waving.vrma', isLoop: false },
 ]
 
@@ -1987,6 +1988,12 @@ export class AnimationManager {
     const aliasMap = {
       wave: 'Waving',
       waving: 'Waving',
+      uzbek_salom: 'UzbekSalom',
+      uzbeksalom: 'UzbekSalom',
+      salom: 'UzbekSalom',
+      assalom: 'UzbekSalom',
+      assalomu_alaykum: 'UzbekSalom',
+      assalomu_aleykum: 'UzbekSalom',
       hello: 'Greeting',
       hi: 'Greeting',
       greeting: 'Greeting',

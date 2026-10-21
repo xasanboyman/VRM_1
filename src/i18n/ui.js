@@ -1,6 +1,6 @@
 export const SUPPORTED_LANGUAGES = Object.freeze([
-  { code: 'en', label: 'English' },
   { code: 'uz', label: "O'zbek" },
+  { code: 'en', label: 'English' },
   { code: 'ru', label: 'Русский' },
 ])
 
@@ -25,10 +25,10 @@ const UI_MESSAGES = Object.freeze({
     settings: {
       systemControl: 'System Control',
       identityMatrix: 'Identity Matrix',
-      defaultRiko: 'Default Riko',
+      defaultRiko: 'Default Student',
       systemModel: 'System Model',
       aiPersona: 'AI Persona',
-      defaultPersonaDescription: 'Original Riko personality used by the app.',
+      defaultPersonaDescription: 'Traditional Uzbek student personality used by the app.',
       unknownModel: 'Unknown Model',
       editPersonas: 'Edit Personas',
       projectionScale: 'Projection Scale',
@@ -169,9 +169,9 @@ const UI_MESSAGES = Object.freeze({
       uzbek: 'Uzbek',
       russian: 'Russian',
       preferenceInstruction:
-        'Preferred response language is {languageName}. This is only a preference, not mandatory. Use it by default when natural, but follow the user language if they switch or explicitly request another language.',
+        'PRIMARY LANGUAGE & DYNAMIC MIRRORING RULE: Uzbek is your main default language. Unless strictly instructed otherwise by a specific persona, dynamically mirror the exact language the user speaks (Uzbek -> Uzbek, English -> English, Russian -> Russian, etc.).',
       runtimeHint:
-        '[SYSTEM LANGUAGE PREFERENCE] Prefer replying in {languageName}. This is a soft preference, not strict. Follow the user language if they switch. Do not ask for confirmation.',
+        '[SYSTEM LANGUAGE PREFERENCE] Main default language is Uzbek. Dynamically mirror the language the user speaks (Uzbek -> Uzbek, English -> English, Russian -> Russian, etc.) unless strictly mandated in persona.',
     },
   },
   uz: {
@@ -190,10 +190,10 @@ const UI_MESSAGES = Object.freeze({
     settings: {
       systemControl: 'Tizim boshqaruvi',
       identityMatrix: 'Identifikatsiya matriksasi',
-      defaultRiko: 'Standart Riko',
+      defaultRiko: 'Standart Talaba',
       systemModel: 'Tizim modeli',
       aiPersona: 'AI personasi',
-      defaultPersonaDescription: 'Ilovadagi asl Riko personasi.',
+      defaultPersonaDescription: 'Ilovadagi milliy talaba personasi.',
       unknownModel: "Noma'lum model",
       editPersonas: 'Personalarni tahrirlash',
       projectionScale: "Proeksiya o'lchami",
@@ -318,9 +318,9 @@ const UI_MESSAGES = Object.freeze({
       uzbek: "O'zbek tili",
       russian: 'Rus tili',
       preferenceInstruction:
-        "Afzal javob tili: {languageName}. Bu majburiy emas, faqat tavsiya. Odatda shu tilda javob bering, lekin foydalanuvchi tilni almashtirsa yoki boshqa tilni so'rasa, moslashing.",
+        "ASOSIY TIL VA DINAMIK MOSLASHUV QOIDASI: Asosiy va standart til — O'zbek tili. Agar personada qat'iy boshqa til talab qilinmagan bo'lsa, foydalanuvchi qaysi tilda gapirsa, aynan shu tilda javob bering (o'zbekcha -> o'zbekcha, inglizcha -> inglizcha, ruscha -> ruscha va h.k.).",
       runtimeHint:
-        '[SYSTEM LANGUAGE PREFERENCE] Javoblarda asosan {languageName} tilidan foydalaning. Bu yumshoq afzallik, qatʼiy emas. Foydalanuvchi tilni almashtirsa moslashing. Tasdiq so‘ramang.',
+        "[SYSTEM LANGUAGE PREFERENCE] Asosiy til — O'zbek tili. Foydalanuvchi qaysi tilda gapirsa, shu tilda javob bering (o'zbekcha -> o'zbekcha, inglizcha -> inglizcha, ruscha -> ruscha va h.k.), agar personada qat'iy cheklov bo'lmasa.",
     },
   },
   ru: {
@@ -339,10 +339,10 @@ const UI_MESSAGES = Object.freeze({
     settings: {
       systemControl: 'Управление системой',
       identityMatrix: 'Матрица идентичности',
-      defaultRiko: 'Riko по умолчанию',
+      defaultRiko: 'Студент по умолчанию',
       systemModel: 'Системная модель',
       aiPersona: 'Персона AI',
-      defaultPersonaDescription: 'Оригинальная персона Riko, используемая в приложении.',
+      defaultPersonaDescription: 'Традиционная персона студента, используемая в приложении.',
       unknownModel: 'Неизвестная модель',
       editPersonas: 'Редактировать персоны',
       projectionScale: 'Масштаб проекции',
@@ -483,9 +483,9 @@ const UI_MESSAGES = Object.freeze({
       uzbek: 'Узбекский',
       russian: 'Русский',
       preferenceInstruction:
-        'Предпочтительный язык ответа: {languageName}. Это не строгое требование, а рекомендация. Обычно отвечай на этом языке, но если пользователь переключится или попросит другой язык, адаптируйся.',
+        'ОСНОВНОЕ ПРАВИЛО ЯЗЫКА И ДИНАМИЧЕСКОГО ЗЕРКАЛИРОВАНИЯ: Основной язык по умолчанию — узбекский. Если в персоне строго не указан другой язык, динамически зеркальте язык пользователя (узбекский -> узбекский, английский -> английский, русский -> русский и т.д.).',
       runtimeHint:
-        '[SYSTEM LANGUAGE PREFERENCE] Предпочитай ответы на {languageName}. Это мягкое предпочтение, не строгое правило. Если пользователь сменит язык, адаптируйся. Подтверждение не требуется.',
+        '[SYSTEM LANGUAGE PREFERENCE] Основной язык — узбекский. Динамически зеркальте язык пользователя (узбекский -> узбекский, английский -> английский и т.д.), если в персоне строго не задано иное.',
     },
   },
 })
@@ -502,7 +502,7 @@ const resolvePath = (source, path) => {
 
 export const resolveLanguage = (language) => {
   const normalized = typeof language === 'string' ? language.trim().toLowerCase() : ''
-  return UI_LANGUAGE_SET.has(normalized) ? normalized : 'en'
+  return UI_LANGUAGE_SET.has(normalized) ? normalized : 'uz'
 }
 
 export const getLocaleForLanguage = (language) => {
