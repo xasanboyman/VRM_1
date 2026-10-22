@@ -882,50 +882,8 @@ export class SpecialEffectsManager {
    * Start falling sakura cherry blossom petals (with optional duration)
    */
   startSakura(options = {}) {
-    if (this._sakuraTimer) {
-      clearTimeout(this._sakuraTimer)
-      this._sakuraTimer = null
-    }
-
-    if (!this.isSakuraActive) {
-      this.isSakuraActive = true
-      const texture = this.getSakuraTexture()
-      const count = 35
-      for (let i = 0; i < count; i++) {
-        const material = new THREE.SpriteMaterial({
-          map: texture,
-          transparent: true,
-          opacity: 0.85,
-          depthWrite: false,
-        })
-        const sprite = new THREE.Sprite(material)
-        const x = (Math.random() - 0.5) * 3.5
-        const y = 1.0 + Math.random() * 2.5
-        const z = -1.0 + Math.random() * 2.5
-        sprite.position.set(x, y, z)
-        const scale = 0.06 + Math.random() * 0.05
-        sprite.scale.set(scale, scale, 1)
-        this.effectsGroup.add(sprite)
-
-        this.sakuraPetals.push({
-          sprite,
-          material,
-          scale,
-          rotation: Math.random() * Math.PI * 2,
-          rotSpeed: (Math.random() - 0.5) * 2.0,
-          fallSpeed: 0.25 + Math.random() * 0.35,
-          driftSpeed: 1.2 + Math.random() * 1.5,
-          driftOffset: Math.random() * Math.PI * 2,
-        })
-      }
-    }
-
-    const duration = options?.duration || (typeof options === 'number' ? options : null)
-    if (duration && duration > 0) {
-      this._sakuraTimer = setTimeout(() => {
-        this.stopSakura()
-      }, duration * 1000)
-    }
+    // Sakura petals effect completely disabled
+    return
   }
 
   /**
@@ -1350,76 +1308,8 @@ export class SpecialEffectsManager {
    * Unified trigger method for explicit calls
    */
   trigger(effectName, options = {}) {
-    const lower = String(effectName).toLowerCase().trim()
-    switch (lower) {
-      case 'hearts':
-      case 'heart':
-        this.triggerHearts(options)
-        break
-      case 'sparkles':
-      case 'sparkle':
-      case 'glitter':
-        this.triggerSparkles(options)
-        break
-      case 'tears':
-      case 'tear':
-      case 'crying':
-        this.triggerTears(options)
-        break
-      case 'sweat':
-        this.triggerSweat(options)
-        break
-      case 'steam':
-        this.triggerSteam(options)
-        break
-      case 'exclamation':
-      case '!':
-        this.triggerExclamation()
-        break
-      case 'question':
-      case '?':
-        this.triggerQuestion()
-        break
-      case 'zzz':
-      case 'sleep':
-        this.triggerZzz(options)
-        break
-      case 'music':
-      case 'notes':
-        this.triggerMusicNotes(options)
-        break
-      case 'gloom':
-        this.triggerGloom(options)
-        break
-      case 'speed_lines':
-      case 'action_lines':
-        this.triggerSpeedLines(options)
-        break
-      case 'sakura':
-      case 'petals':
-      case 'cherry_blossoms':
-        if (options.action === 'stop' || options.enable === false || options.active === false) {
-          this.stopSakura()
-        } else if (options.action === 'toggle') {
-          this.toggleSakura(undefined, options)
-        } else {
-          this.startSakura(options)
-        }
-        break
-      case 'all':
-        if (options.action === 'stop') {
-          this.stopAll()
-        }
-        break
-      case 'glitch':
-        this.triggerGlitch(options.duration)
-        break
-      case 'vignette':
-        this.triggerVignette(options.color, options.duration)
-        break
-      default:
-        console.warn(`Unknown special effect: ${effectName}`)
-    }
+    // All visual effects disabled per configuration
+    return
   }
 
   /* -------------------------------------------------------------------------- */

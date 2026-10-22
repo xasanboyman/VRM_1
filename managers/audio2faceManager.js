@@ -81,7 +81,16 @@ export class Audio2FaceManager {
       return null
     }
 
-    // Japanese MMD Vowels & Eye Blinks -> VRM Standard
+    // Disallow Audio2Face from controlling eye blinking to prevent unnatural fluttering and stuck-closed eyes
+    const blinkChannels = new Set([
+      'blink', 'blinkleft', 'blinkright', 'eyeblinkleft', 'eyeblinkright', 'まばたき', 'ウィンク', 'ウィンク２', 'ウィンク２右'
+    ])
+    if (blinkChannels.has(lower) || blinkChannels.has(rawName)) {
+      this.resolvedExpressionMap.set(rawName, null)
+      return null
+    }
+
+    // Japanese MMD Vowels -> VRM Standard
     const PHONEME_MAP = {
       'あ': 'aa',
       'ワ': 'aa',
@@ -94,17 +103,12 @@ export class Audio2FaceManager {
       'お': 'oh',
       '口横広げ': '口横広げ',
       '口角上げ': '口角上げ',
-      'まばたき': 'blink',
-      'ウィンク２': 'blinkLeft',
-      'ウィンク２右': 'blinkRight',
     }
 
     const ARKIT_MAP = {
       jawopen: 'aa',
       mouthfunnel: 'oh',
       mouthpucker: 'ou',
-      eyeblinkleft: 'blinkLeft',
-      eyeblinkright: 'blinkRight',
     }
 
     let target = null

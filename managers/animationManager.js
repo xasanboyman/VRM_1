@@ -506,9 +506,9 @@ export class AnimationManager {
     microAmplitude: 0.02,
     microFrequency: 2.0,
     squint: 0.0,
-    blinkMinInterval: 2.0,
-    blinkMaxInterval: 5.0,
-    blinkDuration: 0.15,
+    blinkMinInterval: 3.5,
+    blinkMaxInterval: 6.5,
+    blinkDuration: 0.12,
     mouthBias: { aa: 0, ee: 0, ih: 0, oh: 0, ou: 0 },
     mouthInfluenceWhileSpeaking: 0.28,
   }
@@ -1274,14 +1274,14 @@ export class AnimationManager {
     }
 
     const blinkMinInterval = THREE.MathUtils.clamp(
-      2.8 - mood.angry * 0.9 - mood.surprised * 0.8 + mood.relaxed * 1.1 + mood.sad * 0.5,
-      1.2,
-      5.4,
+      3.8 - mood.angry * 0.9 - mood.surprised * 0.8 + mood.relaxed * 1.1 + mood.sad * 0.5,
+      3.0,
+      6.5,
     )
     const blinkRange = THREE.MathUtils.clamp(
-      1.6 + mood.relaxed * 1.4 + mood.sad * 0.6 - mood.angry * 0.3,
-      1.2,
-      3.8,
+      2.0 + mood.relaxed * 1.4 + mood.sad * 0.6 - mood.angry * 0.3,
+      1.5,
+      4.0,
     )
 
     return {
@@ -1825,14 +1825,7 @@ export class AnimationManager {
       if (this.blinkProgress >= this.blinkDuration) {
         this.isBlinking = false
         this.blinkProgress = 0
-
-        // Double blink doublet logic: ~20% probability to trigger another blink immediately
-        if (Math.random() < 0.20 && !this._isDoubleBlinking) {
-          this._isDoubleBlinking = true
-          this.blinkTimer = this.nextBlinkTime - (0.08 + Math.random() * 0.12)
-        } else {
-          this._isDoubleBlinking = false
-        }
+        this._isDoubleBlinking = false
       }
     }
   }
@@ -1922,15 +1915,15 @@ export class AnimationManager {
     }
 
     const squintTarget = THREE.MathUtils.clamp(
-      this.expressionStyle.squint + Math.max(0, this.microIntensity * 0.2),
+      this.expressionStyle.squint + Math.max(0, this.microIntensity * 0.1),
       0,
-      0.35,
+      0.15,
     )
 
     const currentTargetWeights = this.targetExpressionWeights || {}
-    const explicitBlinkLeft = currentTargetWeights.blinkLeft || 0
-    const explicitBlinkRight = currentTargetWeights.blinkRight || 0
-    const explicitBlink = currentTargetWeights.blink || 0
+    const explicitBlinkLeft = Math.min(currentTargetWeights.blinkLeft || 0, 0.85)
+    const explicitBlinkRight = Math.min(currentTargetWeights.blinkRight || 0, 0.85)
+    const explicitBlink = Math.min(currentTargetWeights.blink || 0, 0.85)
 
     const leftVal = Math.max(blinkValue, squintTarget, explicitBlinkLeft, explicitBlink)
     const rightVal = Math.max(blinkValue, squintTarget, explicitBlinkRight, explicitBlink)

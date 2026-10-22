@@ -1304,7 +1304,7 @@ export class AIClient {
       `Speak with your natural, warm, bright, and articulate Zephyr voice. Treat the user as an intelligent peer and companion. ` +
       `When the user speaks to you, respond to their current spoken words IMMEDIATELY with natural, articulate spoken voice dialogue. ` +
       `Every single turn MUST contain spoken voice audio from the very first question! Never produce silent turns. ` +
-      `Do NOT call tools (such as trigger_special_effect or trigger_gesture) on routine opening greetings or questions unless the user explicitly requested them. Respond with immediate voice!`
+      `Do NOT call tools on routine opening greetings or questions. Respond with immediate voice!`
     )
 
     if (sections.length === 0) return ''
@@ -1896,26 +1896,9 @@ export class AIClient {
       return { id, name, response: { result: 'ok', tone, pitch_shift_cents: 0 } }
     }
 
-    if (name === 'trigger_special_effect') {
-      const effectName = args?.effect || args?.name
-      if (effectName) {
-        if (args?.action === 'stop' || args?.enable === false) {
-          window.effectsManager?.stop?.(effectName)
-        } else {
-          window.effectsManager?.trigger(effectName, args)
-        }
-      }
-      return { id, name, response: { result: 'ok', effect: effectName, action: args?.action || 'start' } }
-    }
-
-    if (name === 'stop_special_effect') {
-      const effectName = args?.effect || args?.name || 'all'
-      if (effectName === 'all') {
-        window.effectsManager?.stopAll?.()
-      } else {
-        window.effectsManager?.stop?.(effectName)
-      }
-      return { id, name, response: { result: 'ok', stopped: effectName } }
+    if (name === 'trigger_special_effect' || name === 'stop_special_effect') {
+      // Visual effects completely disabled per configuration
+      return { id, name, response: { result: 'disabled', message: 'VFX effects are disabled' } }
     }
 
     // Default fallback
@@ -2515,48 +2498,6 @@ export class AIClient {
                     'Facial expression to match e.g. "angry", "happy", "blush", "relaxed", "wink".',
                 },
               },
-            },
-          },
-          {
-            name: 'trigger_special_effect',
-            description:
-              'Trigger or control anime visual special effects (e.g. hearts, sparkles, tears, sweat, steam, exclamation, question, zzz, music_notes, gloom, sakura, speed_lines, vignette, glitch). For atmospheric effects like sakura petals, you can start, stop, or specify a duration in seconds.',
-            parameters: {
-              type: 'OBJECT',
-              properties: {
-                effect: {
-                  type: 'STRING',
-                  description:
-                    'Visual effect name. Allowed values: hearts, sparkles, tears, sweat, steam, exclamation, question, zzz, music_notes, gloom, sakura, speed_lines, vignette, glitch, all.',
-                },
-                action: {
-                  type: 'STRING',
-                  description:
-                    'Action to perform: "start" (default) to begin/trigger, "stop" to stop/clear the effect (especially for continuous effects like sakura), or "toggle".',
-                },
-                duration: {
-                  type: 'NUMBER',
-                  description:
-                    'Optional duration in seconds before the effect automatically stops (e.g. 15.0 for 15 seconds of falling sakura petals).',
-                },
-              },
-              required: ['effect'],
-            },
-          },
-          {
-            name: 'stop_special_effect',
-            description:
-              'Stop or clear an active special effect (e.g. stop falling sakura cherry blossom petals, stop speed lines, or stop all active effects).',
-            parameters: {
-              type: 'OBJECT',
-              properties: {
-                effect: {
-                  type: 'STRING',
-                  description:
-                    'Name of the effect to stop: "sakura", "speed_lines", "vignette", "glitch", "gloom", or "all" to clear everything.',
-                },
-              },
-              required: ['effect'],
             },
           },
           {

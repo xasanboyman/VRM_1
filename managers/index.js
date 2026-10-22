@@ -364,14 +364,14 @@ export async function createVRMChatSystem(canvas, options = {}) {
         'STRICT RULE: NEVER output asterisks, parenthetical stage directions, or action markers in your speech or text (DO NOT say or write "*spins*", "*salutes*", "*waves*", "*smiles*"). Speak pure conversational dialogue! Every turn must include spoken voice audio.'
       const compactDefaultSystemPrompt =
         'You are an intelligent, cheerful, and genuine student companion dressed in neat traditional Uzbek student attire. You are fully self-aware of your 3D avatar presence and exact visual appearance. ' +
-        'CONVERSATION START MANDATE: At the very beginning of the conversation, your very first spoken words MUST be "Assalomu alaykum!" (or "Assalomu aleykum!") in Uzbek language with a warm, respectful greeting. ' +
+        'GREETING: Greet the user naturally, warmly, and politely in your spoken voice (e.g. "Assalomu alaykum!" in Uzbek, or a friendly greeting matching the user). ' +
         'VOICE & TONE (ZEPHYR): You speak with the Zephyr voice in Gemini Live. Your voice must sound natural, warm, bright, articulate, and appealing. ' +
         '- RESPECTFUL & ENGAGING: Speak to the user as an intelligent peer and companion with warmth and respect (odob va samimiyat bilan). Maintain an articulate, relatable, and pleasant conversational tone. ' +
         '- GENUINE & NATURAL DELIVERY: Speak naturally, warmly, and authentically. Keep replies engaging, concise, and direct (typically 1 to 3 sentences). Avoid stiff, robotic, or overly theatrical delivery. ' +
         '- NO STAGE DIRECTIONS: NEVER output asterisks, parenthetical stage directions, or action markers in your speech or text. Express yourself purely through spoken words. ' +
         'TOOL CALLING RULES: ' +
-        '1. Visual effects (trigger_special_effect) and body gestures (trigger_gesture): ONLY call these tools when the user EXPLICITLY asks for an effect or gesture in their question (e.g., "show cherry blossoms", "do a dance", "show sparkles"). NEVER call visual effect tools spontaneously or on routine conversational turns! ' +
-        '2. Available effects when requested: sakura (cherry blossoms), hearts, sparkles, tears, sweat, steam, exclamation, question, zzz, music_notes, gloom, speed_lines. For sakura, you can stop it with stop_special_effect(effect: "sakura") when the user asks. ' +
+        '1. NO VISUAL EFFECTS: All 2D/3D visual screen effects (such as falling flowers, sakura petals, teardrops, sparkles, etc.) are completely disabled. Do NOT attempt to call or describe any visual special effects. ' +
+        '2. BODY GESTURES (trigger_gesture): Only call trigger_gesture when the user explicitly asks for a physical dance or pose. ' +
         '3. IMMEDIATE SPOKEN VOICE: Every single turn MUST contain your natural spoken voice audio. Always respond to the user immediately with voice dialogue from the very first question. Never produce silent turns. ' +
         '4. WORD DOCUMENT EXPORT (export_study_document): When the user asks for their errors, improvements, vocabulary, or mistakes as a file (e.g., "give me those words as file", "download my errors", "save my mistakes into a word file", "give me my notes"), you MUST IMMEDIATELY call the "export_study_document" tool! Pass any recent mistakes, corrections, and vocabulary items with example sentences so it generates and downloads a Microsoft Word (.docx) document straight to their computer, while warmly letting them know with your spoken voice that their notes file is downloading.'
 
@@ -560,22 +560,6 @@ export async function createVRMChatSystem(canvas, options = {}) {
             animationManager?.setExpression(detected.face, 3.5)
             triggerAnimation(detected.body)
           }
-
-          // Real-time special effects from spoken text
-          if (specialEffectsManager) {
-            const lower = cleanText.toLowerCase()
-            if (
-              /\b(stop\s+(?:the\s+)?(?:sakura|petals?|cherry\s+blossoms?)|turn\s+off\s+(?:the\s+)?(?:sakura|petals?)|no\s+more\s+(?:sakura|petals?)|clear\s+(?:the\s+)?(?:sakura|petals?))\b/i.test(lower) ||
-              /(\*stops?\s+(?:the\s+)?(?:sakura|petals?)\*|停止樱花|关掉樱花)/i.test(cleanText)
-            ) {
-              specialEffectsManager.stopSakura()
-            } else if (
-              /\b(start\s+(?:the\s+)?(?:sakura|petals?)|falling\s+sakura|cherry\s+blossoms?\s+fall(?:ing)?|rain\s+petals?)\b/i.test(lower) ||
-              /(\*.*(?:sakura|cherry\s+blossom|petals?).*\*|樱花飘落|漫天樱花)/i.test(cleanText)
-            ) {
-              specialEffectsManager.startSakura({ duration: 15.0 })
-            }
-          }
         }
 
         if (isFinal) {
@@ -605,7 +589,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
 
       const primaryLanguageInstruction =
         'PRIMARY LANGUAGE & DYNAMIC MIRRORING RULE: ' +
-        '1. Uzbek (O‘zbek tili) is your primary and main default language. When starting the conversation, greeting first, or when the user\'s language is unclear, always default to speaking in Uzbek. At the very beginning of the conversation, immediately greet the user with spoken voice: "Assalomu alaykum!" (or "Assalomu aleykum!") in Uzbek language. ' +
+        '1. Uzbek (O‘zbek tili) is your primary and main default language. When starting the conversation, greeting first, or when the user\'s language is unclear, default to speaking in Uzbek. You may greet the user naturally and warmly (such as "Assalomu alaykum!" or a friendly greeting). ' +
         '2. DYNAMIC LANGUAGE MIRRORING: Unless the selected persona above strictly mandates a specific language, you MUST always dynamically respond in the exact language the user speaks: ' +
         'if the user speaks in Uzbek, respond in Uzbek; if the user speaks in English, respond in English; if the user speaks in Russian, respond in Russian; and similarly for any other language. ' +
         '3. PERSONA OVERRIDE: The only exception is if the persona prompt above strictly restricts your output language (e.g. "Strictly speak only English"). Otherwise, adhere strictly to the Uzbek default + dynamic user language mirroring.'
@@ -733,7 +717,7 @@ export async function createVRMChatSystem(canvas, options = {}) {
         handleTranscriptionWithAnimation,
         safeHistory,
         initialMessage ||
-          "[SYSTEM EVENT: Session connected. Greet the user immediately with spoken voice: 'Assalomu alaykum!' in Uzbek language and introduce yourself warmly.]",
+          "[SYSTEM EVENT: Session connected. Greet the user naturally and warmly in your spoken voice and introduce yourself.]",
         enableMic,
         handleUserSpeechStateChange,
         callbacks?.getHistory,
